@@ -1,0 +1,323 @@
+{
+  "_readme": [
+    "Data for tools/win_port.py. The Windows edition is a regeneration of the",
+    "Linux one, not a fork: every feature comes from ~/browser, and only the",
+    "regions described here are ours. Keep this file honest and the port stays",
+    "a script run plus a diff review.",
+    "",
+    "'ported_from' is the Linux commit the checked-in Windows files were last",
+    "generated from. win_port.py uses it as the merge base, so it MUST be",
+    "updated (the script does it) whenever a port is committed.",
+    "",
+    "'linux_repo' is where that checkout is. This file is committed and",
+    "public, so it says ~ rather than naming a home directory; win_port.py",
+    "expands it. An absolute path works too."
+  ],
+  "linux_repo": "~/browser",
+  "ported_from": "4ba83169ebb1e517b851819e233fed6278191459",
+  "merge_files": [
+    "browser.py",
+    "test_upgrade.py",
+    "tests/harness.py"
+  ],
+  "copy_files": [
+    "start.html",
+    "settings.html",
+    "history.html",
+    "downloads.html",
+    "bookmarks.html",
+    "passwords.html",
+    "_the test suite; it belongs to the browser it tests, so it is ported too",
+    "_boot.py",
+    "test_page.py",
+    "test_panes.py",
+    "test_newtab.py",
+    "test_toolbar.py",
+    "test_wizard.py",
+    "test_contrast.py",
+    "test_themefix.py",
+    "test_vaultoff.py",
+    "test_theme.py",
+    "test_trust.py",
+    "test_vault.py",
+    "test_providers.py",
+    "test_async.py",
+    "test_op_page.py",
+    "_(test_upgrade.py and tests/harness.py are merge_files: see edited_here)",
+    "tests/pages.py",
+    "tests/pages3.py",
+    "tests/pages4.py",
+    "tests/pages5.py",
+    "tests/test_identbox.py",
+    "tests/test_msaccounts.py",
+    "tests/test_round3.py",
+    "tests/test_twostep.py",
+    ".github/scripts/invariant_checks.py",
+    "tools/mock-op",
+    "tools/webauthn_probe.py",
+    "test_paneload.py",
+    "tests/pages6.py",
+    "tests/test_subdomain.py"
+  ],
+  "_edited_here_readme": [
+    "Ported files this edition then changes, and why. Each one is a merge_file",
+    "rather than a copy_file, so the change survives the next port and a Linux",
+    "edit to the same lines raises a conflict instead of being silently lost.",
+    "Anything here is a divergence and wants a reason that will still read as a",
+    "good one in six months."
+  ],
+  "edited_here": {
+    "test_upgrade.py": "checks an old browser.py out of THIS repository; the revision the Linux copy names is a Linux commit, and the two histories share nothing",
+    "tests/harness.py": "its scratch directory had a fixed name, so two checkouts running suites at once wiped each other's data"
+  },
+  "_substitutions_readme": [
+    "Applied to generated files after the merge/copy. Written so that running",
+    "them twice is a no-op: the replacement never matches the pattern again.",
+    "",
+    "'min' is a floor on hits, and it is low on purpose. browser.py comes out",
+    "of the three-way merge with our side's substitutions already in it, so it",
+    "contributes nothing here; a rule only fires for it when Linux adds a NEW",
+    "font stack, which is exactly the case worth catching. The copied HTML",
+    "pages are fresh from Linux every time, so those hits are guaranteed.",
+    "What actually enforces the result is the matching marker below."
+  ],
+  "substitutions": [
+    {
+      "why": "UI font stack: Windows has no Inter fallback worth having, and no JetBrains Mono unless the user installed it. Cascadia Mono ships with Windows Terminal, Consolas with Windows itself.",
+      "files": [
+        "browser.py",
+        "*.html"
+      ],
+      "find": "\"JetBrainsMono Nerd Font\", \"Inter\", sans-serif",
+      "replace": "\"JetBrainsMono Nerd Font\", \"Cascadia Mono\", \"Consolas\", \"Inter\", sans-serif",
+      "_min_why": "one per copied HTML page; browser.py's own is merge-carried",
+      "min": 6
+    },
+    {
+      "why": "Theme monospace stacks (terminal, amber, blueprint, gameboy, c64). DejaVu/Liberation are Linux font packages; Windows has neither.",
+      "files": [
+        "browser.py",
+        "*.html"
+      ],
+      "find": "\"JetBrainsMono Nerd Font\", \"DejaVu Sans Mono\"",
+      "replace": "\"JetBrainsMono Nerd Font\", \"Cascadia Mono\", \"Consolas\", \"DejaVu Sans Mono\"",
+      "_min_why": "these live only in browser.py, which is merge-carried, so zero is the normal reading. A hit here means Linux added a theme and this rule just saved it.",
+      "min": 0
+    }
+  ],
+  "_markers_readme": [
+    "Every Windows-specific region, expressed as something that must be true of",
+    "the generated tree. If a marker goes missing the port dropped one of ours,",
+    "and win_port.py refuses to finish. 'max' is optional; 'count' pins it exactly."
+  ],
+  "markers": [
+    {
+      "file": "browser.py",
+      "name": "DATA_DIR under %LOCALAPPDATA%",
+      "pattern": "DATA_DIR = Path\\(os\\.environ\\.get\\(\"LOCALAPPDATA\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "DATA_DIR posix fallback kept",
+      "pattern": "DATA_DIR = Path\\.home\\(\\) / \"\\.local/share/browser\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "config.json under DATA_DIR",
+      "pattern": "CONFIG_FILE = DATA_DIR / \"config\\.json\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "hosts.json under DATA_DIR",
+      "pattern": "HOSTS_FILE = DATA_DIR / \"hosts\\.json\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "history.json under DATA_DIR",
+      "pattern": "HISTORY_FILE = DATA_DIR / \"history\\.json\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "downloads.json under DATA_DIR",
+      "pattern": "DOWNLOADS_FILE = DATA_DIR / \"downloads\\.json\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "bookmarks.json under DATA_DIR",
+      "pattern": "BOOKMARKS_FILE = DATA_DIR / \"bookmarks\\.json\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "no data file left on a posix home path",
+      "pattern": "Path\\.home\\(\\) / \"\\.local/share/browser/",
+      "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "GITHUB_REPO for the zip updater",
+      "pattern": "GITHUB_REPO = \"idkhowtonamemyselfasadev/browser-windows\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "urllib.request imported (zip updater)",
+      "pattern": "^import urllib\\.request$",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "zipfile imported (zip updater)",
+      "pattern": "^import zipfile$",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "io imported (zip updater uses BytesIO)",
+      "pattern": "^import io$",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "_zip_update",
+      "pattern": "def _zip_update\\(self\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "_check_zip_update",
+      "pattern": "def _check_zip_update\\(self\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "zip branch in _check_updates",
+      "pattern": "threading\\.Thread\\(target=self\\._check_zip_update",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "updateAvailable signal declared",
+      "pattern": "updateAvailable = pyqtSignal\\(\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "updateAvailable connected to the toast",
+      "pattern": "self\\.updateAvailable\\.connect\\(self\\._show_toast\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "updateAvailable emitted from the worker",
+      "pattern": "self\\.updateAvailable\\.emit\\(\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "_restrict_to_owner defined",
+      "pattern": "def _restrict_to_owner\\(path\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "_restrict_to_owner uses icacls",
+      "pattern": "\"icacls\", str\\(path\\), \"/inheritance:r\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "_write_private calls it on win32",
+      "pattern": "if sys\\.platform == \"win32\":\\n        _restrict_to_owner\\(path\\)\\n    else:\\n        os\\.chmod\\(path, 0o600\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "taskbar identity (AppUserModelID)",
+      "pattern": "SetCurrentProcessExplicitAppUserModelID",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "icon.ico on win32",
+      "pattern": "icon = \"icon\\.ico\" if sys\\.platform == \"win32\" else \"icon\\.svg\"",
+      "count": 1
+    },
+    {
+      "file": "test_upgrade.py",
+      "name": "upgrade test names a revision of THIS repo",
+      "pattern": "OLD_REV\", \"21ccc4c\"",
+      "count": 1
+    },
+    {
+      "file": "test_upgrade.py",
+      "name": "and not the Linux one",
+      "pattern": "\"b791f0e\"",
+      "count": 0
+    },
+    {
+      "file": "tests/harness.py",
+      "name": "harness scratch is per-process",
+      "pattern": "browser-pwtest-%d\" % os\\.getpid\\(\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "no font stack without a Windows fallback",
+      "pattern": "JetBrainsMono Nerd Font\", (?!\"Cascadia Mono\")",
+      "count": 0
+    },
+    {
+      "file": "*.html",
+      "name": "no font stack without a Windows fallback",
+      "pattern": "JetBrainsMono Nerd Font\", (?!\"Cascadia Mono\")",
+      "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "the no-clone update fetches a zip",
+      "pattern": "def _update_without_clone[\\s\\S]{0,600}?_zip_update",
+      "count": 1
+    }
+  ],
+  "_hand_regions_readme": [
+    "Regions that are NOT reproduced by merge+substitution and only survive",
+    "because the 3-way merge carries them forward from the previous port. They",
+    "are listed here so a reviewer knows what to look for, and so a from-scratch",
+    "regeneration (no merge base) knows what it must re-add by hand.",
+    "The markers above are what actually enforces their presence."
+  ],
+  "hand_regions": [
+    "DATA_DIR block and the five constants derived from it",
+    "GITHUB_REPO + _zip_update + _check_zip_update + the updateAvailable signal, its connection and its emit, and the zip branches in _do_update and _check_updates",
+    "_restrict_to_owner (icacls) and the win32 branch in _write_private",
+    "SetCurrentProcessExplicitAppUserModelID and icon.ico in main()"
+  ],
+  "_win_only_files_readme": "Files that exist only in this edition and must never be clobbered by a port.",
+  "win_only_files": [
+    "icon.ico",
+    "install.bat",
+    "test_windows.py",
+    "tools/win_port.py",
+    "tools/win_port.json",
+    "tools/runall.sh"
+  ],
+  "_linux_only_files_readme": "Files in ~/browser that deliberately do not come across, and why.",
+  "linux_only_files": {
+    "install.sh": "POSIX installer; install.bat is this edition's equivalent",
+    ".github/": "CI runs on the Linux repository",
+    "_boot.py": "developer harness, not shipped",
+    "_shot.py": "developer harness, not shipped",
+    "_shots.py": "developer harness, not shipped",
+    "_startbg.py": "developer harness, not shipped",
+    "_themepages.py": "developer harness, not shipped",
+    "_themeshot.py": "developer harness, not shipped",
+    "_varcheck.py": "developer harness, not shipped"
+  }
+}
