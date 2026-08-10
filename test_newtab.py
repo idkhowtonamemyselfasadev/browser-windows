@@ -758,6 +758,32 @@ def settings_is_never_blank():
 section("(8) Settings never comes up blank", settings_is_never_blank)
 
 
+# ---------------------------------------------------------------- (9)
+def a_bare_scheme_is_not_an_address():
+    # desktop "open the browser" shortcuts ask for a bare "https://";
+    # a tab opened on that would sit blank forever, so it must count
+    # as "no address given" at both doors (argv and the handoff)
+    check("\"https://\" maps to no address",
+          B._launch_url("https://") is None)
+    check("\"http://\" maps to no address",
+          B._launch_url("http://") is None)
+    check("nothing stays nothing",
+          B._launch_url(None) is None and B._launch_url("") is None)
+    # a launcher that does not substitute Exec field codes hands the
+    # literal "%u" over — the placeholder for a URL is not a URL
+    check("an unsubstituted field code maps to no address",
+          all(B._launch_url(c) is None for c in ("%u", "%U", "%f", "%F")))
+    check("a real address passes untouched",
+          B._launch_url("https://example.com/a?b=c")
+          == "https://example.com/a?b=c")
+    check("a local file passes untouched",
+          B._launch_url("file:///anywhere/page.html")
+          == "file:///anywhere/page.html")
+
+
+section("(9) a bare scheme is not an address", a_bare_scheme_is_not_an_address)
+
+
 print("\n%d failed" % len(fails))
 for f in fails:
     print("  - " + f)
