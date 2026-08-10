@@ -14,7 +14,7 @@
     "expands it. An absolute path works too."
   ],
   "linux_repo": "~/browser",
-  "ported_from": "4ba83169ebb1e517b851819e233fed6278191459",
+  "ported_from": "24cfa2489babcb04de8cbde7b84a1922cd53bf4d",
   "merge_files": [
     "browser.py",
     "test_upgrade.py",
@@ -56,6 +56,7 @@
     "tools/mock-op",
     "tools/webauthn_probe.py",
     "test_paneload.py",
+    "test_update.py",
     "tests/pages6.py",
     "tests/test_subdomain.py"
   ],

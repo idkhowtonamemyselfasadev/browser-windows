@@ -40,7 +40,8 @@ run() {
 for t in test_page.py test_newtab.py test_panes.py test_paneload.py test_vaultoff.py \
          test_theme.py test_trust.py test_vault.py test_providers.py \
          test_async.py test_upgrade.py test_op_page.py test_toolbar.py \
-         test_wizard.py test_contrast.py test_themefix.py; do
+         test_wizard.py test_contrast.py test_themefix.py \
+         test_update.py; do
   run "$t" ""
 done
 

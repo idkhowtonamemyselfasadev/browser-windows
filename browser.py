@@ -5551,6 +5551,57 @@ class Bridge(QObject):
         self._updating = True
         threading.Thread(target=self._zip_update, daemon=True).start()
 
+    def _reset_to_origin(self):
+        """Take what GitHub has, wholesale.
+
+        Reached only when a pull cannot fast-forward. The folder holds the
+        browser and nothing of the person's own — the config, the history
+        and the vault all live elsewhere — so there is nothing here to
+        weigh against what is published, and a copy that cannot pull is
+        otherwise stuck on its old files for ever.
+
+        `fetch` then `reset --hard FETCH_HEAD`, because after a rewrite
+        upstream the local branch's idea of origin/main is itself stale."""
+        proc = QProcess(self)
+        self._updating = proc
+        proc.setWorkingDirectory(str(APP_DIR))
+        proc.finished.connect(lambda *_: self._reset_done(proc))
+        proc.errorOccurred.connect(lambda *_: self._reset_done(proc))
+        proc.start("git", ["fetch", "--prune", "origin"])
+
+    def _reset_done(self, proc):
+        if self._updating is not proc:
+            return
+        ok = (proc.exitStatus() == QProcess.ExitStatus.NormalExit
+              and proc.exitCode() == 0)
+        proc.deleteLater()
+        if not ok:
+            self._updating = None
+            self.updateFinished.emit(
+                "Update failed: could not reach GitHub.")
+            return
+        hard = QProcess(self)
+        self._updating = hard
+        hard.setWorkingDirectory(str(APP_DIR))
+        hard.finished.connect(lambda *_: self._reset_finished(hard))
+        hard.errorOccurred.connect(lambda *_: self._reset_finished(hard))
+        hard.start("git", ["reset", "--hard", "origin/HEAD"])
+
+    def _reset_finished(self, proc):
+        if self._updating is not proc:
+            return
+        self._updating = None
+        err = bytes(proc.readAllStandardError()).decode(errors="replace")
+        ok = (proc.exitStatus() == QProcess.ExitStatus.NormalExit
+              and proc.exitCode() == 0)
+        proc.deleteLater()
+        if ok:
+            self.updateFinished.emit(
+                "Updated! Restart the browser to finish.")
+        else:
+            last = (err.strip().splitlines() or ["unknown error"])[-1]
+            self.updateFinished.emit("Update failed: " + last)
+
     def _pull_after(self, tidy):
         """The tidy-up is done, whatever it found. Now the actual pull."""
         if self._updating is not tidy:
@@ -5611,9 +5662,15 @@ class Bridge(QObject):
             # copy and GitHub's have gone their separate ways, and no
             # update can arrive until that is settled.
             if "fast-forward" in last or "diverged" in last:
-                msg = ("Update failed: this copy has changes GitHub does "
-                       "not have. Nothing was lost — but the update "
-                       "cannot arrive until they are dealt with.")
+                # The two have gone their separate ways. Nobody edits the
+                # browser's own folder by hand, so there is nothing here
+                # worth keeping over what GitHub has — and the one thing
+                # that genuinely causes this is the history being rewritten
+                # upstream, after which a pull can never succeed again and
+                # the copy is stranded on old files for good. Take what is
+                # published instead of explaining the deadlock.
+                self._reset_to_origin()
+                return
             elif "unresolved conflict" in last or "MERGE_HEAD" in last:
                 msg = ("Update failed: a half-finished merge is in the way. "
                        "Try once more — this clears it first now.")
@@ -15919,6 +15976,27 @@ def _install_theme_flags():
 SINGLE_INSTANCE_SOCKET = "browser-single-instance"
 
 
+def _launch_url(text):
+    """What a URL handed in from outside is worth as an address.
+
+    Desktop shortcuts "open the default browser" by asking for a bare
+    "https://" — a scheme with nothing behind it. That is a request
+    for the browser, not for a page, and a tab opened on it would sit
+    blank forever. Anything without a site in it maps to None, which
+    every caller already treats as "no address given"."""
+    if not text:
+        return None
+    if re.fullmatch(r"%[a-zA-Z]", text):
+        # the desktop entry says "Exec=... %u", and a launcher that
+        # does not substitute field codes hands the %u over as it
+        # stands. It marks where a URL would go; it never is one.
+        return None
+    url = QUrl(text)
+    if url.scheme() in ("http", "https") and not url.host():
+        return None
+    return text
+
+
 def _pid_alive(pid):
     if sys.platform == "win32":
         import ctypes
@@ -15937,7 +16015,7 @@ def _pid_alive(pid):
 def main():
     # a URL argument means we were asked to open a link (e.g. as the
     # system default browser)
-    url = sys.argv[1] if len(sys.argv) > 1 else None
+    url = _launch_url(sys.argv[1] if len(sys.argv) > 1 else None)
 
     # started by our own restart(): let the old process finish dying
     # so the profile and socket are free
@@ -15987,7 +16065,8 @@ def main():
 
         def read():
             message = bytes(conn.readAll()).decode().strip()
-            win.new_tab(url=None if message in ("", "raise") else message)
+            win.new_tab(url=None if message == "raise"
+                        else _launch_url(message))
             win.showNormal()
             win.raise_()
             win.activateWindow()
