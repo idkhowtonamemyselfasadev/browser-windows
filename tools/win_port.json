@@ -14,7 +14,7 @@
     "expands it. An absolute path works too."
   ],
   "linux_repo": "~/browser",
-  "ported_from": "b1cac888ab502ecb1912afa3a6dc289e24582151",
+  "ported_from": "39a4ebeff1892696f50e1f82fdb122fe65cde48f",
   "merge_files": [
     "browser.py",
     "test_upgrade.py",
