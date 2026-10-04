@@ -31,9 +31,15 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem -- the shortcut must start the same Python that pip just installed into:
+rem    with two Pythons on the PC, "pythonw" on PATH can be the other one,
+rem    and then the shortcut fails silently on a missing PyQt6 --
+set "PYW="
+for /f "delims=" %%i in ('py -3 -c "import sys,os;print(os.path.join(os.path.dirname(sys.executable),'pythonw.exe'))" 2^>nul') do set "PYW=%%i"
+if not defined PYW for /f "delims=" %%i in ('python -c "import sys,os;print(os.path.join(os.path.dirname(sys.executable),'pythonw.exe'))" 2^>nul') do set "PYW=%%i"
 echo Creating desktop shortcut...
 powershell -NoProfile -Command ^
-  "$pyw = (Get-Command pythonw -ErrorAction SilentlyContinue).Source; " ^
+  "$pyw = $env:PYW; if (-not $pyw -or -not (Test-Path $pyw)) { $pyw = (Get-Command pythonw -ErrorAction SilentlyContinue).Source }; " ^
   "if (-not $pyw) { $pyw = (Get-Command python).Source -replace 'python\.exe$','pythonw.exe' }; " ^
   "$s = (New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop') + '\Browser.lnk'); " ^
   "$s.TargetPath = $pyw; " ^

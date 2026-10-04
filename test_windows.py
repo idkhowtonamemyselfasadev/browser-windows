@@ -228,12 +228,32 @@ class FakeResponse(io.BytesIO):
         return False
 
 
+def refs(sha):
+    """What github.com/<repo>.git/info/refs answers, cut down to the
+    line the updater reads."""
+    return ("001e# service=git-upload-pack\n0000"
+            "003f%s refs/heads/main\n0000" % sha).encode()
+
+
+SHA_A, SHA_B, SHA_C = "a" * 40, "b" * 40, "c" * 40
+
+
 class FakeBrowser:
     def __init__(self, cfg):
         self.config = cfg
         self.saved = 0
+        browser = self
 
-    def save_config(self):
+        class Known:
+            @staticmethod
+            def emit(sha):
+                # what Browser._adopt_update_sha does on the GUI thread
+                if browser.config.get("updateSha") != sha:
+                    browser.config["updateSha"] = sha
+                    browser.save_config()
+        self.updateShaKnown = Known()
+
+    def save_config(self, quiet=False):
         self.saved += 1
 
 
@@ -287,7 +307,7 @@ def make_zip(entries):
 dest = SCRATCH / "app-current"
 dest.mkdir()
 (dest / "browser.py").write_bytes(b"old")
-b1 = run_update({"updateSha": "abc123"}, [b'{"sha": "abc123"}'], dest)
+b1 = run_update({"updateSha": SHA_A}, [refs(SHA_A)], dest)
 check("a sha it already has means nothing is downloaded",
       b1.updateFinished.sent == ["You have the newest version ✓"],
       b1.updateFinished.sent)
@@ -306,8 +326,8 @@ zipped = make_zip([
     ("browser-windows-main/tools/win_port.py", b"tool"),
     ("browser-windows-main", b""),          # the root entry itself
 ])
-cfg = {"updateSha": "old-sha"}
-b2 = run_update(cfg, [b'{"sha": "new-sha"}', zipped], dest)
+cfg = {"updateSha": SHA_A}
+b2 = run_update(cfg, [refs(SHA_B), zipped], dest)
 check("a new sha unpacks the tree it downloaded",
       b2.updateFinished.sent == ["Updated! Restart the browser to finish."],
       b2.updateFinished.sent)
@@ -317,14 +337,29 @@ check("a nested file arrived, directory and all",
 check("GitHub's top-level directory is stripped rather than nested",
       not (dest / "browser-windows-main").exists())
 check("the new sha is recorded, which is the only record of the version",
-      cfg["updateSha"] == "new-sha", cfg)
+      cfg["updateSha"] == SHA_B, cfg)
 check("and written out", b2.browser.saved == 1)
+check("no half-written .new file is left beside anything",
+      not list(dest.rglob("*.new")))
+
+# a fresh install: no sha recorded, and the zip is what is already here
+dest = SCRATCH / "app-fresh"
+dest.mkdir()
+(dest / "browser.py").write_bytes(b"same code")
+cfg = {}
+b4 = run_update(cfg, [refs(SHA_C),
+                      make_zip([("browser-windows-main/browser.py",
+                                 b"same code")])], dest)
+check("a fresh install that is already current says so, not Updated!",
+      b4.updateFinished.sent == ["You have the newest version \u2713"],
+      b4.updateFinished.sent)
+check("and learns which version it is", cfg.get("updateSha") == SHA_C, cfg)
 
 # the network being the network
 dest = SCRATCH / "app-fail"
 dest.mkdir()
 (dest / "browser.py").write_bytes(b"old")
-b3 = run_update({"updateSha": "x"}, [OSError("no route to host")], dest)
+b3 = run_update({"updateSha": SHA_A}, [OSError("no route to host")], dest)
 check("a failed update says so rather than throwing on a worker thread",
       len(b3.updateFinished.sent) == 1
       and b3.updateFinished.sent[0].startswith("Update failed:"),
@@ -339,22 +374,35 @@ emitted = []
 
 
 class FakeWin:
-    config = {"updateSha": "have-this"}
+    config = {"updateSha": SHA_A}
 
     class updateAvailable:
         @staticmethod
         def emit():
             emitted.append(True)
 
+    class updateShaKnown:
+        @staticmethod
+        def emit(sha):
+            FakeWin.config["updateSha"] = sha
+
+    class zipProbed:
+        @staticmethod
+        def emit(sha):
+            FakeWin.config["zipProbedSha"] = sha
+
 
 def run_check(payload, cfg):
     FakeWin.config = cfg
     del emitted[:]
 
+    queue = list(payload) if isinstance(payload, list) else [payload]
+
     def fake_urlopen(url, timeout=None):
-        if isinstance(payload, Exception):
-            raise payload
-        return FakeResponse(payload)
+        item = queue.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return FakeResponse(item)
 
     real = B.urllib.request.urlopen
     B.urllib.request.urlopen = fake_urlopen
@@ -366,11 +414,30 @@ def run_check(payload, cfg):
 
 
 check("a newer sha raises the flag for the window to see",
-      run_check(b'{"sha": "newer"}', {"updateSha": "have-this"}) == [True])
+      run_check(refs(SHA_B), {"updateSha": SHA_A}) == [True])
 check("the one we already have says nothing",
-      run_check(b'{"sha": "have-this"}', {"updateSha": "have-this"}) == [])
+      run_check(refs(SHA_A), {"updateSha": SHA_A}) == [])
 check("and a network error says nothing rather than taking the thread down",
-      run_check(OSError("offline"), {"updateSha": "have-this"}) == [])
+      run_check(OSError("offline"), {"updateSha": SHA_A}) == [])
+real_app = B.APP_DIR
+B.APP_DIR = SCRATCH / "app-fresh"
+try:
+    fresh = {}
+    check("a fresh install that already has main announces nothing",
+          run_check([refs(SHA_C), make_zip([("r-main/browser.py",
+                                             b"same code")])], fresh) == [])
+    check("and records the version it found it has",
+          fresh.get("updateSha") == SHA_C, fresh)
+    differs = {}
+    check("a fresh install that differs from main is told about it",
+          run_check([refs(SHA_C), make_zip([("r-main/browser.py",
+                                             b"newer code")])],
+                    differs) == [True])
+    check("and the next start asks GitHub only which version is newest, "
+          "without downloading the whole zip again",
+          run_check([refs(SHA_C)], differs) == [True], differs)
+finally:
+    B.APP_DIR = real_app
 check("it goes through a signal, because a worker thread cannot touch "
       "a widget",
       "updateAvailable = pyqtSignal()" in src_of_browser(),
@@ -391,6 +458,55 @@ check("and that call is guarded by a platform check, "
 check("the window icon is the .ico on Windows and the .svg elsewhere",
       'icon = "icon.ico" if sys.platform == "win32" else "icon.svg"' in src)
 check("and the .ico is actually shipped", (HERE / "icon.ico").is_file())
+
+# --- the vault as an old Windows build wrote it ----------------------
+print("\na vault an old Windows build wrote in text mode")
+# os.open() without O_BINARY gave a text-mode descriptor on Windows and
+# the C runtime wrote every LF byte as CR LF. Done here by hand, to a
+# vault written properly, which is the same damage byte for byte.
+check("every os.open that writes asks for binary mode",
+      all("_O_BINARY" in line for line in SRC.splitlines()
+          if "os.open(" in line and "O_WRONLY" in line), "")
+check("O_NOFOLLOW is only used where the platform has it",
+      "os.O_NOFOLLOW" not in SRC.replace('"O_NOFOLLOW"', ""))
+recovered = 0
+for n in range(20):
+    vdir = SCRATCH / ("crlf-%d" % n)
+    vdir.mkdir()
+    want = {"logins": [{"host": "site%d.de" % i, "password": "pw-%d-%d" % (n, i)}
+                       for i in range(20)]}
+    B.VaultLock(vdir).write(want)
+    for f in ("passwords.json", "passwords.key"):
+        fp = vdir / f
+        fp.write_bytes(fp.read_bytes().replace(b"\n", b"\r\n"))
+    if B.VaultLock(vdir).read() == want and B.VaultLock(vdir).read() == want:
+        recovered += 1
+check("a damaged plain vault opens, and stays open once repaired",
+      recovered == 20, "%d/20" % recovered)
+mdir = SCRATCH / "crlf-master"
+mdir.mkdir()
+lock = B.VaultLock(mdir)
+lock.write({"logins": []})
+check("a master password can be set", lock.enable("correct horse"))
+want = {"logins": [{"host": "s%d.de" % i, "password": "p%d" % i}
+                   for i in range(20)]}
+lock.write(want)
+vf = mdir / "passwords.json"
+vf.write_bytes(vf.read_bytes().replace(b"\n", b"\r\n"))
+again = B.VaultLock(mdir)
+check("a damaged locked vault takes the right passphrase",
+      again.unlock("correct horse") and again.read() == want)
+check("and still refuses a wrong one",
+      not B.VaultLock(mdir).unlock("wrong horse"))
+
+# a lost key file: the vault is put aside, never written over
+kdir = SCRATCH / "lost-key"
+kdir.mkdir()
+B.VaultLock(kdir).write({"logins": [{"host": "bank.com", "password": "x"}]})
+(kdir / "passwords.key").unlink()
+B.VaultLock(kdir).write({"logins": [{"host": "new.com", "password": "y"}]})
+check("a vault whose key is lost is set aside, not overwritten",
+      len(list(kdir.glob("passwords.json.unreadable-*"))) == 1)
 
 print("\nnothing anywhere near real data")
 check("every file this suite wrote is inside its own scratch directory",
