@@ -32,7 +32,7 @@ run() {
   # as a pass.
   timeout 900 python "$1" > "$OUT/log" 2>&1
   rc=$?
-  tail -3 "$OUT/log"
+  tail -n 3 "$OUT/log"
   echo "exit=$rc"
   [ $rc -eq 0 ] || bad="$bad $2$1"
 }
@@ -64,7 +64,7 @@ rc=$?; tail -4 "$OUT/log"; echo "exit=$rc"
 
 echo "=== windows regions ==="
 python tools/win_port.py --check > "$OUT/log" 2>&1
-rc=$?; tail -3 "$OUT/log"; echo "exit=$rc"
+rc=$?; tail -n 3 "$OUT/log"; echo "exit=$rc"
 [ $rc -eq 0 ] || bad="$bad win_port --check"
 
 echo

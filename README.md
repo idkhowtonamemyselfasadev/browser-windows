@@ -138,7 +138,7 @@ desktop or window manager with no system configuration.
 | `Ctrl+P` | Print or save as PDF |
 | `Ctrl+Shift+A` | Search open tabs |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
-| `Shift+Tab` | Next virtual browser |
+| `Ctrl+Alt+PgDown` / `Ctrl+Alt+PgUp` | Next / previous virtual browser |
 | `Ctrl+R` / `F5` | Reload |
 | `Alt+Home` | Start page |
 | `Ctrl+H` | History |
