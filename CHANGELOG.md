@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-04 — Update never throws work away
+
+- **Update no longer wipes uncommitted changes in a git copy.** When a
+  pull could not fast-forward, it ran `git reset --hard origin/HEAD`:
+  uncommitted edits were gone, unpushed commits dropped out of sight, and
+  a feature branch was moved onto main - and it said "Updated!". Now it
+  stops and says why when there are uncommitted changes, resets only onto
+  the branch's own upstream, and keeps the old version as a branch
+  `update-backup-<time>` first. Zip installs were never affected.
+
 ## 2026-10-04 — the Windows bug sweep
 
 - **Logins survive closing the browser.** It used to end itself before
