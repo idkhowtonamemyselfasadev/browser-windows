@@ -6955,7 +6955,41 @@ class Bridge(QObject):
         self._updating = True
         threading.Thread(target=self._zip_update, daemon=True).start()
 
-    def _reset_to_origin(self):
+    def _git_quick(self, *args):
+        """A short git question asked synchronously: (exit code, stdout).
+        Anything that keeps git from answering is (-1, "")."""
+        try:
+            r = subprocess.run(["git", *args], cwd=str(APP_DIR),
+                               capture_output=True, text=True, timeout=15,
+                               creationflags=getattr(
+                                   subprocess, "CREATE_NO_WINDOW", 0))
+            return r.returncode, r.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return -1, ""
+
+    def _reset_blocker(self):
+        """Why a hard reset must NOT run here, or None when it may.
+
+        A reset --hard throws away every uncommitted edit in the tree,
+        and moving the branch drops its unpushed commits from sight. A
+        developer's checkout (a feature branch, work in progress) is
+        exactly the copy that diverges, so: never with uncommitted
+        changes, only onto this branch's own upstream, and only after
+        HEAD has been kept under a backup branch."""
+        code, dirty = self._git_quick(
+            "status", "--porcelain", "--untracked-files=no")
+        if code != 0 or dirty:
+            return ("Update stopped: this copy has changes that are not "
+                    "committed, so nothing was replaced. Commit or stash "
+                    "them and try again.")
+        code, up = self._git_quick(
+            "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+        if code != 0 or not up:
+            return ("Update stopped: this branch does not follow one on "
+                    "GitHub, so there is nothing to take.")
+        return None
+
+    def _reset_to_origin(self, target="@{u}", backup=""):
         """Take what GitHub has, wholesale.
 
         Reached only when a pull cannot fast-forward. The folder holds the
@@ -6966,6 +7000,7 @@ class Bridge(QObject):
 
         `fetch` then `reset --hard FETCH_HEAD`, because after a rewrite
         upstream the local branch's idea of origin/main is itself stale."""
+        self._reset_target, self._reset_backup = target, backup
         proc = QProcess(self)
         self._updating = proc
         proc.setWorkingDirectory(str(APP_DIR))
@@ -6989,7 +7024,8 @@ class Bridge(QObject):
         hard.setWorkingDirectory(str(APP_DIR))
         hard.finished.connect(lambda *_: self._reset_finished(hard))
         hard.errorOccurred.connect(lambda *_: self._reset_finished(hard))
-        hard.start("git", ["reset", "--hard", "origin/HEAD"])
+        hard.start("git", ["reset", "--hard",
+                           getattr(self, "_reset_target", "@{u}")])
 
     def _reset_finished(self, proc):
         if self._updating is not proc:
@@ -7000,8 +7036,11 @@ class Bridge(QObject):
               and proc.exitCode() == 0)
         proc.deleteLater()
         if ok:
+            backup = getattr(self, "_reset_backup", "")
             self.updateFinished.emit(
-                "Updated! Restart the browser to finish.")
+                "Updated! Restart the browser to finish."
+                + (" (the old version is kept as branch %s)" % backup
+                   if backup else ""))
         else:
             last = (err.strip().splitlines() or ["unknown error"])[-1]
             self.updateFinished.emit("Update failed: " + last)
@@ -7082,9 +7121,25 @@ class Bridge(QObject):
                 # that genuinely causes this is the history being rewritten
                 # upstream, after which a pull can never succeed again and
                 # the copy is stranded on old files for good. Take what is
-                # published instead of explaining the deadlock.
-                self._reset_to_origin()
-                return
+                # published instead of explaining the deadlock -- but only
+                # onto this branch's own upstream, never over uncommitted
+                # work, and with the old HEAD kept under a backup branch.
+                blocker = self._reset_blocker()
+                if blocker:
+                    msg = blocker
+                else:
+                    backup = "update-backup-" + time.strftime(
+                        "%Y%m%d-%H%M%S")
+                    if self._git_quick("branch", backup, "HEAD")[0] != 0:
+                        backup = ""
+                    if backup:
+                        self._reset_to_origin("@{u}", backup)
+                        return
+                    msg = "Update stopped: could not keep a backup first."
+            elif "would be overwritten" in err:
+                msg = ("Update stopped: this copy has changes that are not "
+                       "committed, and the update touches the same files. "
+                       "Commit or stash them and try again.")
             elif "unresolved conflict" in last or "MERGE_HEAD" in last:
                 msg = ("Update failed: a half-finished merge is in the way. "
                        "Try once more — this clears it first now.")
