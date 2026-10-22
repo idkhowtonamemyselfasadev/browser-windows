@@ -1,5 +1,95 @@
 # Changelog
 
+## 2026-10-22 — caught up with the Linux edition
+
+This edition was generated from a `browser.py` of 20,563 lines. The one
+it is generated from now is **66,033**, and twenty-seven commits of work
+had happened in between: the whole thousand-feature run, the Settings
+rail with its ten shelves, the two features that were taken out
+("carry on where you left off" and the search history, both with
+migrations that delete what they stored), and everything in the Linux
+changelog since 2026-08.
+
+**What it took, and what came out of it**
+
+- The three-way merge could not do it alone: with forty-five thousand
+  new lines on the other side, all 75 of its conflicts were a region of
+  ours sitting next to a Linux rewrite. So the regions were placed once
+  by hand against the new file, and the merge base brought up to date —
+  which is what `ported_from` is for. The next port is a script run
+  again.
+- **`_boot.py` had not been ported since the rule was written.** The
+  file lists in `win_port.json` carry their own commentary, and an entry
+  starting with an underscore was taken for prose — which is exactly
+  what `_boot.py` looks like. Every suite in here imports it. Prose is a
+  `#` line now, and `_boot.py` is two months less old than it was.
+- **The suite ran twenty of eighty-six files.** It was a list, written
+  when there were twenty, and the Linux one had grown to eighty-seven
+  while this edition was away. `tools/runall.sh` takes every
+  `test_*.py` in the folder now — what is here is exactly what the port
+  brought, so a suite that arrives with a port runs without anyone
+  remembering to add it.
+- **The known gap in the updater is closed.** An entry in the
+  downloaded zip named where it was written, and nothing asked whether
+  that was still inside the browser's folder: an archive carrying
+  `repo-main/../../x` would have been written outside it. Every entry
+  goes through `_zip_target` now, which refuses anything that lands
+  elsewhere and abandons the whole update rather than skipping one
+  file. `test_windows.py` carries exactly that archive.
+- **Three of the four Windows regions have moved into `~/browser`**,
+  where a test suite reaches them on every push — the data folder's
+  Windows default, the icacls helper and the branch that uses it, the
+  taskbar identity and the `.ico`. One of them had already rotted in
+  the dark: `_write_atomic` had been calling `_restrict_to_owner` to
+  lock a swapped vault down since the last bug sweep, and that name was
+  not in the Linux file at all. What is left here is the zip updater,
+  which genuinely cannot be shared.
+- **Three features that were dead here now work**: an address another
+  program owns goes to the shell, which is what keeps the register of
+  those on Windows (the browser used to say nothing could open a
+  `discord:` address on a machine with Discord installed); the screen
+  stays awake while a video plays, through the one call Windows has for
+  it instead of the systemd tool it does not have; and the graphics
+  cards are listed, by name and device id.
+- **The graphics card is not chosen from in here.** Windows keeps that
+  per executable in its own Graphics settings, and the executable is
+  `python.exe`, shared with every Python program on the machine.
+  Settings lists the cards and says where the choice lives. No window
+  asks anything at startup.
+- **Four font stacks that Windows has no fonts for** are substituted on
+  every port now, not two: the terminal look's sheet, the notes
+  textarea and the themed-page renderer were all falling through to
+  Courier New.
+- **"What this is costing" had nothing in it.** The per-tab memory and
+  processor numbers were read out of `/proc`, so every row of that page
+  said nothing here — which reads as a broken page rather than a
+  platform the code never asked about. The working set and kernel +
+  user time come out of `GetProcessMemoryInfo` and `GetProcessTimes`
+  now, opened with no more privilege than those two numbers need.
+  *Memory pressure* stays empty on purpose: Windows has no counter for
+  "was anything stalled waiting for memory", and the one it has answers
+  a different question.
+- **Reading a page aloud works.** It went through `spd-say`, a
+  speech-dispatcher client, so the answer here was "no speech program
+  installed" — on a machine whose own .NET has had a synthesiser in it
+  for twenty years. PowerShell drives that one now, with the text
+  handed over base64-encoded through stdin so that an umlaut in a
+  German article survives the console code page, and with no console
+  window flashing over the page.
+- **Six Settings rows stop naming Linux programs.** The screen-awake
+  row said "only through systemd-inhibit", the reader's missing-program
+  line said "(spd-say)", the media-keys row told him to go looking for
+  `mpris.py`, and the notifications row offered `notify-send`. Each is
+  substituted on every port, and each has a check that fails the port
+  if the wording drifts back.
+
+**The honest part:** this edition still cannot be run on the machine it
+is built on. What the suite proves is that the shared code — which is
+all of it bar the updater — behaves the same against this `browser.py`
+as against the Linux one, and `tools/win_port.py --check` proves every
+Windows region is still in place. The first start on a real Windows
+machine is still the first start on a real Windows machine.
+
 ## 2026-10-04 — Update never throws work away
 
 - **Update no longer wipes uncommitted changes in a git copy.** When a

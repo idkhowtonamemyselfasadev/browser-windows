@@ -14,20 +14,21 @@
     "expands it. An absolute path works too."
   ],
   "linux_repo": "~/browser",
-  "ported_from": "9ae4b78627f6947306e602f16eacb20adc84a6e1",
+  "ported_from": "0975755041e8d66db0c7dfcfe1c493dffe331fed",
   "merge_files": [
     "browser.py",
     "test_upgrade.py",
-    "tests/harness.py"
+    "README.md"
   ],
   "copy_files": [
+    "# (test_upgrade.py and README.md are merge_files: see edited_here)",
     "start.html",
     "settings.html",
     "history.html",
     "downloads.html",
     "bookmarks.html",
     "passwords.html",
-    "_the test suite; it belongs to the browser it tests, so it is ported too",
+    "# the test suite; it belongs to the browser it tests, so it is ported too",
     "_boot.py",
     "test_page.py",
     "test_panes.py",
@@ -43,7 +44,6 @@
     "test_providers.py",
     "test_async.py",
     "test_op_page.py",
-    "_(test_upgrade.py and tests/harness.py are merge_files: see edited_here)",
     "tests/pages.py",
     "tests/pages3.py",
     "tests/pages4.py",
@@ -58,7 +58,93 @@
     "test_paneload.py",
     "test_update.py",
     "tests/pages6.py",
-    "tests/test_subdomain.py"
+    "tests/test_subdomain.py",
+    "# the sibling modules. Each is optional at import time (HAVE_* in browser.py), so one",
+    "# that cannot work here is simply not there - that is what keeps this list short.",
+    "adblock.py",
+    "capture.py",
+    "notes.py",
+    "page_guard.py",
+    "privacy.py",
+    "qr.py",
+    "theme_web.py",
+    "# pages of its own, served from the folder like the ones above",
+    "notes.html",
+    "player.html",
+    "mictest.html",
+    "# the passphrase word lists. Without them the generator has nothing to pick from and",
+    "# quietly returns an empty passphrase, so they are not optional.",
+    "words-en.txt",
+    "words-de.txt",
+    "# the rest of the suite, which grew from 42 files to 87 while this edition was away",
+    "test_a11y.py",
+    "test_addressbar.py",
+    "test_bar.py",
+    "test_block3.py",
+    "test_bookmarks2.py",
+    "test_bpgame.py",
+    "test_callguard.py",
+    "test_capture.py",
+    "test_capture2.py",
+    "test_clicks.py",
+    "test_deadtab.py",
+    "test_desk.py",
+    "test_dev.py",
+    "test_devtools.py",
+    "test_downloads.py",
+    "test_external.py",
+    "test_favclip.py",
+    "test_favorites.py",
+    "test_files.py",
+    "test_forms.py",
+    "test_games.py",
+    "test_gaming.py",
+    "test_gaps3.py",
+    "test_gpu.py",
+    "test_keyboard.py",
+    "test_keys2.py",
+    "test_libguard.py",
+    "test_libs.py",
+    "test_lifecycle.py",
+    "test_look2.py",
+    "test_looks.py",
+    "test_marks3.py",
+    "test_master.py",
+    "test_masterrace.py",
+    "test_media.py",
+    "test_media2.py",
+    "test_nav2.py",
+    "test_navguard.py",
+    "test_pageguard.py",
+    "test_pagetools.py",
+    "test_perf.py",
+    "test_perf2.py",
+    "test_permreload.py",
+    "test_privacy.py",
+    "test_privacy2.py",
+    "test_privacy3.py",
+    "test_read3.py",
+    "test_reading.py",
+    "test_reading2.py",
+    "test_saveimage.py",
+    "test_screenshare.py",
+    "test_setpage.py",
+    "test_sitelook.py",
+    "test_sitetheme_render.py",
+    "test_tabwork.py",
+    "test_tabwork2.py",
+    "test_tools3.py",
+    "test_winbranch.py",
+    "test_vaultguard.py",
+    "tests/pages7.py",
+    "tests/test_acctpick.py",
+    "tests/test_masterlock.py",
+    "tests/test_masterwizard.py",
+    "tests/test_private.py",
+    "tests/harness.py",
+    "# the same in both and never edited here; listed so a change there arrives",
+    "LICENSE",
+    "icon.svg"
   ],
   "_edited_here_readme": [
     "Ported files this edition then changes, and why. Each one is a merge_file",
@@ -69,7 +155,7 @@
   ],
   "edited_here": {
     "test_upgrade.py": "checks an old browser.py out of THIS repository; the revision the Linux copy names is a Linux commit, and the two histories share nothing",
-    "tests/harness.py": "its scratch directory had a fixed name, so two checkouts running suites at once wiped each other's data"
+    "README.md": "the same document for a different machine: the install is a zip and a .bat, the paths are %LOCALAPPDATA%, the screenshots are Windows ones, the agent bridge and the security-check workflow belong to the Linux repository, and the tail of it explains this port instead of pointing at it. A merge_file so a feature list that grows there grows here too"
   },
   "_substitutions_readme": [
     "Applied to generated files after the merge/copy. Written so that running",
@@ -80,14 +166,21 @@
     "contributes nothing here; a rule only fires for it when Linux adds a NEW",
     "font stack, which is exactly the case worth catching. The copied HTML",
     "pages are fresh from Linux every time, so those hits are guaranteed.",
-    "What actually enforces the result is the matching marker below."
+    "What actually enforces the result is the matching marker below.",
+    "",
+    "They are applied to the test files too, and on purpose: a suite that",
+    "asserts the browser's font stack is asserting something about the edition",
+    "it is run against, and in this one that stack really is the Windows one.",
+    "test_look2 pinned the terminal look's `monospace` fallback and failed here",
+    "for exactly that reason."
   ],
   "substitutions": [
     {
       "why": "UI font stack: Windows has no Inter fallback worth having, and no JetBrains Mono unless the user installed it. Cascadia Mono ships with Windows Terminal, Consolas with Windows itself.",
       "files": [
         "browser.py",
-        "*.html"
+        "*.html",
+        "test_*.py"
       ],
       "find": "\"JetBrainsMono Nerd Font\", \"Inter\", sans-serif",
       "replace": "\"JetBrainsMono Nerd Font\", \"Cascadia Mono\", \"Consolas\", \"Inter\", sans-serif",
@@ -98,11 +191,136 @@
       "why": "Theme monospace stacks (terminal, amber, blueprint, gameboy, c64). DejaVu/Liberation are Linux font packages; Windows has neither.",
       "files": [
         "browser.py",
-        "*.html"
+        "*.html",
+        "test_*.py"
       ],
       "find": "\"JetBrainsMono Nerd Font\", \"DejaVu Sans Mono\"",
       "replace": "\"JetBrainsMono Nerd Font\", \"Cascadia Mono\", \"Consolas\", \"DejaVu Sans Mono\"",
       "_min_why": "these live only in browser.py, which is merge-carried, so zero is the normal reading. A hit here means Linux added a theme and this rule just saved it.",
+      "min": 0
+    },
+    {
+      "why": "Noto Sans Mono is a Linux font package (the themed-page renderer asks for it by name). Cascadia Mono ships with Windows Terminal, Consolas with Windows itself.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": "\"JetBrainsMono Nerd Font\", \"Noto Sans Mono\"",
+      "replace": "\"JetBrainsMono Nerd Font\", \"Cascadia Mono\", \"Consolas\", \"Noto Sans Mono\"",
+      "_min_why": "one in browser.py today, and it is merge-carried once ported, so zero is the normal reading here",
+      "min": 0
+    },
+    {
+      "why": "The stacks that fall straight through to the generic `monospace` (the terminal look's sheet, the notes textarea). Windows resolves that to Courier New, which is not what the rest of the window is set in.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": "\"JetBrainsMono Nerd Font\", monospace",
+      "replace": "\"JetBrainsMono Nerd Font\", \"Cascadia Mono\", \"Consolas\", monospace",
+      "_min_why": "one per copied page that has one (notes.html today); browser.py's is merge-carried",
+      "min": 1
+    },
+    {
+      "why": "The screen-awake row named systemd-inhibit, which is not how it is done here (SetThreadExecutionState is), and the 'not available' line named a tool this machine was never going to have.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"awakeHint\":\"Only while something is actually playing in the tab in front, and only through systemd-inhibit.\"",
+      "replace": "\"awakeHint\":\"Only while something is actually playing in the tab in front. Windows is asked to keep the screen on for exactly that long.\"",
+      "_min_why": "browser.py is merge-carried, so it fires once and never again; the markers below are what hold the result",
+      "min": 0
+    },
+    {
+      "why": "The screen-awake row named systemd-inhibit, which is not how it is done here (SetThreadExecutionState is), and the 'not available' line named a tool this machine was never going to have.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"awakeHint\":\"Nur solange im vorderen Tab wirklich etwas l\\u00e4uft, und nur \\u00fcber systemd-inhibit.\"",
+      "replace": "\"awakeHint\":\"Nur solange im vorderen Tab wirklich etwas l\\u00e4uft. Windows wird gebeten, den Bildschirm genau so lange anzulassen.\"",
+      "_min_why": "browser.py is merge-carried, so it fires once and never again; the markers below are what hold the result",
+      "min": 0
+    },
+    {
+      "why": "The screen-awake row named systemd-inhibit, which is not how it is done here (SetThreadExecutionState is), and the 'not available' line named a tool this machine was never going to have.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"awakeNo\":\"systemd-inhibit is not here \\u2014 the screen is not held\"",
+      "replace": "\"awakeNo\":\"Windows would not hold the screen \\u2014 it is not held\"",
+      "_min_why": "browser.py is merge-carried, so it fires once and never again; the markers below are what hold the result",
+      "min": 0
+    },
+    {
+      "why": "The screen-awake row named systemd-inhibit, which is not how it is done here (SetThreadExecutionState is), and the 'not available' line named a tool this machine was never going to have.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"awakeNo\":\"systemd-inhibit ist nicht da \\u2014 der Bildschirm wird nicht gehalten\"",
+      "replace": "\"awakeNo\":\"Windows wollte den Bildschirm nicht halten \\u2014 er wird nicht gehalten\"",
+      "_min_why": "browser.py is merge-carried, so it fires once and never again; the markers below are what hold the result",
+      "min": 0
+    },
+    {
+      "why": "The media keys are MPRIS over D-Bus, a Linux desktop protocol, so mpris.py deliberately does not come across - and 'mpris.py is not next to the browser' reads like a broken install rather than a platform that does it differently.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"mprisMissing\":\"mpris.py is not next to the browser.\"",
+      "replace": "\"mprisMissing\":\"The media keys are a Linux desktop protocol (MPRIS over D-Bus); this edition does not answer them.\"",
+      "_min_why": "browser.py is merge-carried, so it fires once and never again; the markers below are what hold the result",
+      "min": 0
+    },
+    {
+      "why": "The media keys are MPRIS over D-Bus, a Linux desktop protocol, so mpris.py deliberately does not come across - and 'mpris.py is not next to the browser' reads like a broken install rather than a platform that does it differently.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"mprisMissing\":\"mpris.py liegt nicht neben dem Browser.\"",
+      "replace": "\"mprisMissing\":\"Die Medientasten sind ein Linux-Desktop-Protokoll (MPRIS \\u00fcber D-Bus); diese Ausgabe beantwortet sie nicht.\"",
+      "_min_why": "browser.py is merge-carried, so it fires once and never again; the markers below are what hold the result",
+      "min": 0
+    },
+    {
+      "why": "The reader is PowerShell's synthesiser here, not speech-dispatcher, so the line that says what is missing has to name the right thing.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"sayMissing\":\"No speech program installed (spd-say).\"",
+      "replace": "\"sayMissing\":\"No speech program installed (PowerShell).\"",
+      "_min_why": "merge-carried in browser.py; the markers hold the result",
+      "min": 0
+    },
+    {
+      "why": "The reader is PowerShell's synthesiser here, not speech-dispatcher.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"sayMissing\":\"Kein Sprachprogramm installiert (spd-say).\"",
+      "replace": "\"sayMissing\":\"Kein Sprachprogramm installiert (PowerShell).\"",
+      "_min_why": "merge-carried in browser.py; the markers hold the result",
+      "min": 0
+    },
+    {
+      "why": "notify-send is a Linux desktop program; a Windows toast needs an app registration a Python script does not have, so the browser's own line in the window is all there is here - and the row should say so rather than name a program that is never coming.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"desktopNotifyHint\":\"Through notify-send when it is installed. Off = the line in the browser is the whole of it.\"",
+      "replace": "\"desktopNotifyHint\":\"Not on Windows \\u2014 the line in the browser is the whole of it.\"",
+      "_min_why": "merge-carried in browser.py; the marker holds the result",
+      "min": 0
+    },
+    {
+      "why": "notify-send is a Linux desktop program; a Windows toast needs an app registration a Python script does not have, so the browser's own line in the window is all there is here - and the row should say so rather than name a program that is never coming.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "\"desktopNotifyHint\":\"\\u00dcber notify-send, wenn es installiert ist. Aus = die Zeile im Browser ist alles.\"",
+      "replace": "\"desktopNotifyHint\":\"Unter Windows nicht \\u2014 die Zeile im Browser ist alles.\"",
+      "_min_why": "merge-carried in browser.py; the marker holds the result",
       "min": 0
     }
   ],
@@ -114,51 +332,51 @@
   "markers": [
     {
       "file": "browser.py",
-      "name": "DATA_DIR under %LOCALAPPDATA%",
-      "pattern": "DATA_DIR = Path\\(os\\.environ\\.get\\(\"LOCALAPPDATA\"",
+      "name": "the data folder has a Windows default",
+      "pattern": "Path\\(os\\.environ\\.get\\(\"LOCALAPPDATA\", str\\(Path\\.home\\(\\)\\)\\)\\) / \"browser\"",
       "count": 1
     },
     {
       "file": "browser.py",
-      "name": "DATA_DIR posix fallback kept",
-      "pattern": "DATA_DIR = Path\\.home\\(\\) / \"\\.local/share/browser\"",
+      "name": "and the posix one is still there for a developer on Linux",
+      "pattern": "else Path\\.home\\(\\) / \"\\.local/share/browser\"\\)",
       "count": 1
     },
     {
       "file": "browser.py",
-      "name": "config.json under DATA_DIR",
-      "pattern": "CONFIG_FILE = DATA_DIR / \"config\\.json\"",
-      "count": 1
-    },
-    {
-      "file": "browser.py",
-      "name": "hosts.json under DATA_DIR",
-      "pattern": "HOSTS_FILE = DATA_DIR / \"hosts\\.json\"",
-      "count": 1
-    },
-    {
-      "file": "browser.py",
-      "name": "history.json under DATA_DIR",
-      "pattern": "HISTORY_FILE = DATA_DIR / \"history\\.json\"",
-      "count": 1
-    },
-    {
-      "file": "browser.py",
-      "name": "downloads.json under DATA_DIR",
-      "pattern": "DOWNLOADS_FILE = DATA_DIR / \"downloads\\.json\"",
-      "count": 1
-    },
-    {
-      "file": "browser.py",
-      "name": "bookmarks.json under DATA_DIR",
-      "pattern": "BOOKMARKS_FILE = DATA_DIR / \"bookmarks\\.json\"",
-      "count": 1
+      "name": "every data file hangs off that one folder",
+      "pattern": "^(CONFIG|HOSTS|HISTORY|DOWNLOADS|BOOKMARKS)_FILE = BROWSER_HOME / \"[a-z]+\\.json\"$",
+      "count": 5
     },
     {
       "file": "browser.py",
       "name": "no data file left on a posix home path",
       "pattern": "Path\\.home\\(\\) / \"\\.local/share/browser/",
       "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "glass does not ask Windows for an alpha window",
+      "pattern": "active_look\\(\\) == \"glass\" and sys\\.platform != \"win32\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "an update archive cannot write outside the browser folder",
+      "pattern": "def _zip_target\\(rel\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "...and the unpacking loop really goes through it",
+      "pattern": "target = _zip_target\\(rel\\)",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "...as does the are-we-already-this-version check",
+      "pattern": "if _zip_target\\(rel\\)\\.read_bytes\\(\\) != data",
+      "count": 1
     },
     {
       "file": "browser.py",
@@ -285,6 +503,36 @@
       "name": "the no-clone update fetches a zip",
       "pattern": "def _update_without_clone[\\s\\S]{0,600}?_zip_update",
       "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "no settings row still names systemd-inhibit",
+      "pattern": "\"awake(Hint|No)\":\"[^\"]*systemd-inhibit",
+      "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "and none of them tells him to go looking for mpris.py",
+      "pattern": "\"mprisMissing\":\"mpris\\.py",
+      "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "the screen-awake row says how it is done here",
+      "pattern": "\"awakeHint\":\"[^\"]*Windows is asked to keep the screen on",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "the reader's missing-program line names PowerShell",
+      "pattern": "\"sayMissing\":\"[^\"]*\\(spd-say\\)",
+      "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "and no row offers notify-send",
+      "pattern": "\"desktopNotifyHint\":\"Through notify-send",
+      "count": 0
     }
   ],
   "_hand_regions_readme": [
@@ -292,22 +540,32 @@
     "because the 3-way merge carries them forward from the previous port. They",
     "are listed here so a reviewer knows what to look for, and so a from-scratch",
     "regeneration (no merge base) knows what it must re-add by hand.",
-    "The markers above are what actually enforces their presence."
+    "The markers above are what actually enforces their presence.",
+    "",
+    "This was four regions and is now one. The other three (the data folder's",
+    "Windows default, the icacls helper and the branch in _write_private, the",
+    "taskbar identity and the .ico) live in ~/browser itself as of 2026-10-22,",
+    "where test_winbranch.py can reach them - the Linux file was already calling",
+    "_restrict_to_owner from _write_atomic without defining it, which is what a",
+    "divergence costs. What is left here is the updater, and it is here because",
+    "it genuinely cannot be shared: this edition is unzipped, not cloned, and it",
+    "updates itself from its own repository."
   ],
   "hand_regions": [
-    "DATA_DIR block and the five constants derived from it",
-    "GITHUB_REPO + _zip_update + _check_zip_update + the updateAvailable signal, its connection and its emit, and the zip branches in _do_update and _check_updates",
-    "_restrict_to_owner (icacls) and the win32 branch in _write_private",
-    "SetCurrentProcessExplicitAppUserModelID and icon.ico in main()"
+    "GITHUB_REPO + _remote_main_sha + _fetch_main_zip + _zip_target + _zip_matches_install + _update_error (module level, after APP_DIR)",
+    "Bridge._update_without_clone (the zip body, not the Linux sentence) and Bridge._zip_update",
+    "Browser.updateAvailable / updateShaKnown / zipProbed, their three connects, Browser._adopt_update_sha, Browser._note_zip_probed, Browser._check_zip_update, and the thread the no-.git branch of Browser._check_updates starts"
   ],
-  "_win_only_files_readme": "Files that exist only in this edition and must never be clobbered by a port.",
+  "_win_only_files_readme": "Files that exist only in this edition and must never be clobbered by a port. CHANGELOG.md is here because each edition tells its own story: the Linux changelog names Linux commits and Linux-only work, and merging the two would read as neither. README.md is NOT here - it is a merge_file, see edited_here.",
   "win_only_files": [
     "icon.ico",
     "install.bat",
     "test_windows.py",
     "tools/win_port.py",
     "tools/win_port.json",
-    "tools/runall.sh"
+    "tools/runall.sh",
+    "CHANGELOG.md",
+    ".gitignore"
   ],
   "_linux_only_files_readme": "Files in ~/browser that deliberately do not come across, and why.",
   "linux_only_files": {
@@ -319,6 +577,20 @@
     "_startbg.py": "developer harness, not shipped",
     "_themepages.py": "developer harness, not shipped",
     "_themeshot.py": "developer harness, not shipped",
-    "_varcheck.py": "developer harness, not shipped"
+    "_varcheck.py": "developer harness, not shipped",
+    "engine_pane.py": "the experimental pane renders through web_engine.so, built from ~/claude/web-engine on that machine; there is no Windows build, and browser.py already treats the module as optional",
+    "mpris.py": "MPRIS is a D-Bus protocol of the Linux desktop; Windows answers the media keys through SystemMediaTransportControls, which Qt does not expose",
+    "agent.py": "the scripting bridge listens on an AF_UNIX socket under /tmp; a Windows port wants a named pipe and is not written yet",
+    "agent_bridge.py": "the other half of that socket",
+    "test_agent.py": "tests agent.py, which does not come across",
+    "test_agent2.py": "tests agent.py, which does not come across",
+    "test_agentops.py": "tests agent.py, which does not come across",
+    "_acctshot.py": "developer harness, not shipped",
+    "_favshots.py": "developer harness, not shipped",
+    "_mastershot.py": "developer harness, not shipped",
+    "_setcheck.py": "developer harness, not shipped",
+    "_setshots.py": "developer harness, not shipped",
+    "_wizshot.py": "developer harness, not shipped",
+    ".gitignore": "nearly the same file, but the Linux one ignores web_engine.so, the compiled artifact of the engine pane, which does not exist here"
   }
 }
