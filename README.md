@@ -1,8 +1,8 @@
 # browser
 
 A dark, keyboard-driven web browser built on Chromium — the Windows edition.
-One readable Python file, Qt WebEngine underneath, pitch black with Catppuccin Mocha text —
-sharp corners, thin outlines, no clutter. Even Google is black.
+One readable Python file, Qt WebEngine underneath, pitch black with Catppuccin
+Mocha text — sharp corners, thin outlines, no clutter. Even Google is black.
 
 ![Start page](screenshots/start-page.png)
 
@@ -19,6 +19,10 @@ tree to audit.
 for it. Light-only sites are darkened automatically. Sites that are already
 dark are left alone, which keeps heavy pages fast.
 
+**One palette drives everything.** A theme recolours the window, the tabs,
+the menus and every page the browser brings with it — from one table of
+colours, applied without a restart. It never touches a website.
+
 **Nothing leaves the machine that you did not ask for.** No telemetry, no
 account, no sync. Browsing data stays in `%LOCALAPPDATA%\browser\`.
 
@@ -27,24 +31,80 @@ account, no sync. Browsing data stays in `%LOCALAPPDATA%\browser\`.
 ### Browsing
 
 - **Tabs and tab groups** — Chrome-style group pills, collapsible, colour-coded
+- **A side panel** (`Ctrl+Shift+Y`) that holds any site beside the page —
+  Discord, Amazon Music, Claude, Twitch chat — as a real view on the same
+  cookie jar, so it is already logged in
+- **Game mode** (`Ctrl+Alt+G`) — every other tab asleep, everything muted,
+  notification requests refused; again to wake exactly those tabs
+- **Reader mode** (`Ctrl+Alt+R`), **link hints** (`Ctrl+Alt+K`), **read
+  aloud** (`Ctrl+Alt+V`) and highlights that come back on the next visit
+- **Screenshots** (`Ctrl+Shift+S`, whole page with `Ctrl+Alt+Shift+S`) with
+  password fields blurred before the shutter
+- **Minecraft server status** (`Ctrl+Alt+J`) — your servers, asked the same
+  question the game's own server list asks
+- **A command palette** (`Ctrl+Shift+K`) and a **cheat sheet** (`Ctrl+/`);
+  every shortcut can be changed in Settings
 - **Virtual browsers** — several independent sessions in one window, each with
   its own cookie jar and logins; sign in to the same site twice without
   signing out
+- **The address bar answers questions** — `12*64+3`, `5 in to mm`, `200 c to f`,
+  `4 gib to mb`, `time in tokyo`, `kw`, `days until 24.12.`, `#ff8800` — all
+  worked out on this computer, with nothing sent anywhere. Enter copies the answer
+- **Search keywords** — `yt cats`, `mr sodium`, `gh repo`, `amz ssd`, `w term`;
+  your own in Settings as any URL with a `%s` in it
+- **Suggestions from your own browser** — an open tab (Enter switches to it), a
+  bookmark, or a page from your history matched on words in any order; an empty
+  bar offers a link you just copied and your last searches
+- **Copy clean address** — the same link without `utm_*`, `fbclid` and the rest
+  of the tracking, also as a Markdown or HTML link, or "Title — address"
 - **Find in page** (`Ctrl+F`) — match count, next/previous, match case
+- **Save any image** — right-click → *Save image* works on whatever is drawn
+  under the cursor: a picture under an overlay, a CSS background, a canvas,
+  an inline SVG. `Shift` + right-click brings the menu up on sites that
+  block it
 - **Tab search** (`Ctrl+Shift+A`) — every open tab of every virtual browser in
   one filtered list
-- **Reopen closed tab** (`Ctrl+Shift+T`) — restores its position and its group
+- **Reopen closed tab** (`Ctrl+Shift+T`) — restores its position and its group,
+  and **Recently closed** in the tab menu lists the last 25, not only the last
+- **The tab's own menu** — pin (it shrinks to its icon, keeps its place across
+  restarts and can be held to its own site), mute (also `Ctrl+M`) or "play
+  sound only here", lock so it asks before closing, rename it so the page
+  cannot change the title, duplicate it (`Ctrl+Shift+D`), open it in another
+  virtual browser or in a private tab, copy the addresses of one tab or of all
+  of them (plain or Markdown), open every address in the clipboard, bookmark
+  every tab into one folder, sort the tabs by site or title, group or close
+  every tab of this site, close the others / to the right / to the left /
+  the duplicates
+- **Account chooser** (`Ctrl+Shift+M`, or the `@` in the address bar) — two
+  accounts saved for a site means nothing is filled in until you say which
+  one. The list of accounts is a panel of the browser's own; the page never
+  sees it, and never learns what is on it
+- **Private tab** (`Ctrl+Shift+N`) — an off-the-record tab that leaves nothing
+  behind: no history, no saved password and none offered, no download record,
+  no favicon kept, and no cookies or site storage once the last one closes.
+  It is never saved as a tab and never comes back at the next start. Two
+  private tabs share one place; a normal tab sees none of it
+- **Page zoom from the keyboard** — `Ctrl` `+` / `Ctrl+-` / `Ctrl+0`, and
+  `Ctrl`+wheel. Per tab, from 25% to 500%; `Ctrl+0` returns to the level in
+  Settings. The browser's own pages are not zoomed a tab at a time — they
+  follow the Page zoom slider, the way they always have
+- **Favourites** (`Ctrl+Shift+F`, or the folder in the toolbar) — the whole
+  bookmark collection in one panel, the way Edge's Favourites button works: a
+  search box at the top and one list underneath, folders opening in place
+  rather than flying out sideways as submenus. Folders go inside folders as
+  deep as you like; a new one is named where you make it, renaming happens in
+  the row itself, and every row carries its own `⋯` so nothing is hidden
+  behind a right-click. Drag a row into a folder, out of one, or between two
+  to reorder it — or use **Move to folder** on the `⋯` if dragging is not
+  your friend. The bookmarks bar is off unless you ask for it
+  (`Ctrl+Shift+B`); the bookmark manager is `Ctrl+Shift+O`
 - **Smart address bar** — URLs, search, and live suggestions in one field
-- **A toolbar you choose** — which buttons sit at the top, and in what order,
-  is yours: right-click the bar, or **Settings → Toolbar**. Back, forward,
-  reload and the address bar stay. Taking a button away never touches its
-  keyboard shortcut
-- **Panes, not pages** — Settings, Downloads, History, Bookmarks and the
-  password manager open over what you were looking at and leave on `Esc`.
-  They cost no tab, no history entry and no address bar
-- **A way home** — `Alt+Home` and a ⌂ button, even when new tabs open on a
-  page of your own
 - **Fullscreen video**, background tabs, sleeping tabs restored on demand
+- **A toolbar you pick** — right-click the row at the top, or Settings →
+  Toolbar, to choose which buttons are up there and what order they come in.
+  Back, forward, reload and the address bar stay; everything else is yours,
+  and eight more buttons that were only ever keyboard shortcuts can join
+  them. Taking a button away never touches its shortcut.
 
 ### Downloads and printing
 
@@ -60,14 +120,11 @@ account, no sync. Browsing data stays in `%LOCALAPPDATA%\browser\`.
   whether you want it, and Settings → Plugins switches it on or off at any
   time. Off means off — the login watcher is never put into a page, so no
   form is looked at and nothing is ever written to the vault. Switching it
-  off deletes nothing. When it is on: a manager page of its own
-  (Ctrl+Shift+P) with search, secure notes, payment cards and identities,
-  a generator (Ctrl+Shift+G), two-factor codes with a countdown, a health
-  check and CSV import/export — or 1Password as the store instead, through
-  the official `op` tool. It offers to save logins and fills them back in
-  on a real click, and the saved password is withheld from page scripts
-  until you actually interact with the form, so an injected script reads an
-  empty field.
+  off deletes nothing; your saved logins are still there when you switch it
+  back on. When it is on it offers to save logins and fills them back in on
+  a real click, and the saved password is withheld from page scripts until
+  you actually interact with the form, so an injected script reads an empty
+  field.
 - **Per-site proxy routing** — send chosen sites through a proxy while
   everything else goes direct, or the reverse. Rules are enforced by a
   built-in local proxy and fail closed: a rule pointing at a dead proxy
@@ -81,16 +138,43 @@ account, no sync. Browsing data stays in `%LOCALAPPDATA%\browser\`.
 
 ### Setup and configuration
 
-- **Setup** — an eight-step first run: language, theme, search engine, start
-  page, site behaviour, privacy, quick links, summary. Re-runnable at any time.
+- **Setup** — a seven-step first run: language, search engine, start page,
+  site behaviour, privacy, quick links, summary. Re-runnable at any time.
 - **Settings** — opens as a pane over the window rather than a page you
   navigate to, so it costs no tab and no history entry
-- **114 themes** — three shelves, searchable, applied the moment you click one
-- **When the browser starts** — the start page, or an address of your own,
-  set separately from what a new tab shows
 - **Start page** — clock, search, editable quick links, background images
   (bundled or your own)
 - **Userscripts** — Greasemonkey-style `*.user.js` files, per profile
+- **Themes** — 115 of them (Settings → Theme), grouped Dark / Light / With
+  character, searchable, each shown as a swatch of its own colours and
+  applied on the spot. Most are credited palettes (Catppuccin, Gruvbox,
+  Nord, Dracula, Solarized, Tokyo Night, Everforest, Rosé Pine, Kanagawa,
+  Monokai, Ayu, Material, Oxocarbon, Nightfox, GitHub, VS Code…); a few
+  bring a face and a texture of their own — Steampunk, Terminal Green,
+  Amber CRT, Blueprint, Newspaper, Game Boy, Frutiger Aero. The default is
+  unchanged.
+- **Looks** (Settings → Look) — a theme is what colour the browser is; a
+  look is what shape it is. Four of them, and every one works with every
+  one of the 115 palettes, because a look owns geometry and never a
+  colour:
+  - **Classic** — the browser as it is drawn. The default, and nothing
+    about it changes when the others exist.
+  - **Taskbar** — a strip along the bottom with a start button, your
+    pinned sites and a clock. The start button opens a search box over a
+    grid of the pins.
+  - **Dock** — a floating, rounded dock over the page with icon
+    magnification, roomier and rounder chrome throughout, and a
+    now-playing widget whose play, pause and skip work the transport of
+    whatever page is making the sound.
+  - **Circle** — the start page becomes a ring: the search box in the
+    middle, the quick links orbiting it, the mouse wheel turning them.
+    The caret still lands in the search box.
+
+  **Pinned sites are the start page's quick links** — one list, not two.
+  Pin from any page's right-click menu, from the `+` on the taskbar, or by
+  adding a quick link on the start page; whichever you use, the other
+  places show it at once. Clicking a pin brings its tab forward if it is
+  already open instead of opening a second one.
 - **Interface translations** — the UI follows the language you choose
 - **Single instance** — links from other applications open as tabs in the
   running window; works as the system default browser
@@ -125,33 +209,68 @@ rebuild the shortcut.
 
 ## Keyboard shortcuts
 
-Shortcuts are handled by the browser itself, so they behave the same on any
-desktop or window manager with no system configuration.
+Shortcuts are handled by the browser itself, so they are the same on every
+machine and need nothing set up in Windows.
 
 | Key | Action |
 |-----|--------|
 | `Ctrl+T` | New tab |
-| `Ctrl+W` | Close tab |
+| `Ctrl+Shift+N` | New private tab |
+| `Ctrl+W` | Close tab (a pinned tab stays) |
 | `Ctrl+Shift+T` | Reopen closed tab |
+| `Ctrl+Shift+D` | Duplicate tab |
+| `Ctrl+Shift+K` | Command palette — every action by name |
+| `Ctrl+Shift+Y` | Side panel — any site beside the page |
+| `Ctrl+Shift+Esc` | What the tabs are costing |
+| `Ctrl+Alt+U` | Your own CSS for this site |
+| `Ctrl+Alt+G` | Game mode |
+| `Ctrl+Alt+J` | Minecraft server status |
+| `Ctrl+Alt+Q` / `Ctrl+Alt+Y` | Discord mute / deafen |
+| `Ctrl+Alt+R` | Reader mode |
+| `Ctrl+Alt+K` | Link hints — a letter on every link |
+| `Ctrl+Alt+V` | Read the selection aloud |
+| `Ctrl+/` | The keyboard shortcuts, on one page |
+| `Ctrl+Shift+S` | Screenshot of what is on screen |
+| `Ctrl+Alt+P` | Panic: mute everything, blank every tab, lock the vault |
+| `Ctrl+Alt+H` | Streamer mode: hide the address bar's text |
+| `Ctrl+Alt+Shift+S` | Screenshot of the whole page |
+| `Ctrl+Alt+Space` / `Ctrl+Alt+←→` | Play/pause / seek the page's video |
+| `Ctrl+Shift+Space` | Pause every playing tab (again: resume) |
+| Middle-click Back / Forward | That step, in a new tab |
+| Hold Back / Forward | That tab's history, several steps at once |
+| `Ctrl+M` | Mute / unmute this tab |
+| `Ctrl+1` … `Ctrl+8` / `Ctrl+9` | Go to that tab / the last tab |
+| `Ctrl+Shift+PgUp` / `PgDn` | Move this tab along the strip |
 | `Ctrl+L` | Focus address bar |
+| `Ctrl+K` | Address bar, ready for a search |
+| `Alt+Enter` (in the bar) | Open what you typed in a new tab |
+| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Finish the name with `.com` / `.de` |
+| `Shift+Delete` (in the bar) | Forget that suggestion |
 | `Ctrl+F` | Find in page |
 | `Ctrl+P` | Print or save as PDF |
 | `Ctrl+Shift+A` | Search open tabs |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
-| `Ctrl+Alt+PgDown` / `Ctrl+Alt+PgUp` | Next / previous virtual browser |
+| `Shift+Tab` | Next virtual browser |
 | `Ctrl+R` / `F5` | Reload |
-| `Alt+Home` | Start page |
 | `Ctrl+H` | History |
 | `Ctrl+J` | Downloads |
+| `Ctrl+Shift+F` | Favourites — the whole bookmark tree in one panel |
 | `Ctrl+Shift+O` | Bookmarks |
-| `Ctrl+Shift+P` | Passwords |
+| `Ctrl+Shift+P` | Passwords (with Vault Password installed) |
+| `Ctrl+Shift+G` | Copy a fresh password to the clipboard |
+| `Ctrl+Shift+M` | Choose which saved account signs in here |
 | `Ctrl+,` | Settings |
+| `Ctrl+` `+` / `Ctrl+-` | Zoom the page in / out (also `Ctrl`+wheel) |
+| `Ctrl+0` | Back to the zoom set in Settings |
 | `F11` | Fullscreen |
 | `F12` / `Ctrl+Shift+I` | Developer tools |
 | `Ctrl+Q` | Quit |
 
-History, Downloads, Bookmarks, Passwords and Settings open as panes, and the
-same key closes the one it opened. `Esc` closes any of them.
+Settings, History, Downloads, Bookmarks and Passwords are panes, not
+tabs: they open over whatever you were looking at, `Esc` (or pressing
+the same key again) closes them, and you are back on the page you came
+from. They never appear in the tab strip or the address bar, and they
+are never reopened as tabs when the browser starts.
 
 ## Configuration
 
@@ -164,7 +283,7 @@ edited for anything beyond that:
 | `browser.py` | Application code. Interface colours are in the `STYLE` string; sites that skip auto-darkening are listed in `NATIVE_DARK_SITES`. |
 | `start.html` | Start page and first-run setup. |
 | `settings.html` | Settings pane. |
-| `history.html`, `downloads.html` | History and downloads pages. |
+| `history.html`, `downloads.html`, `bookmarks.html`, `passwords.html` | The other four panes. |
 | `backgrounds/` | Bundled background images. |
 
 The theme is pitch black (`#000000`) with
@@ -174,8 +293,31 @@ User data — history, settings, saved logins, downloads and cookies — is
 stored under `%LOCALAPPDATA%\browser\`. Saved passwords are obfuscated with a
 per-install key file; the security boundary is your operating system account,
 not a master password. The vault file is given an ACL of its own — this user,
-nobody else — because the POSIX `chmod` the code used to rely on does nothing
-at all on Windows.
+nobody else — because the POSIX `chmod` the code relies on elsewhere does
+nothing at all on Windows.
+
+## What is not here
+
+Everything in the feature list above is in this edition. These are the
+handful of things that are Linux's rather than the browser's, and what
+happens to them here:
+
+| On Linux | Here |
+|---|---|
+| **The media keys** (MPRIS over D-Bus) — the desktop asks what is playing | Not answered. MPRIS is a protocol of the Linux desktop; `mpris.py` is not shipped, and the Settings row says so |
+| **The engine pane** (`Ctrl+Shift+E`), which renders a page through a from-scratch engine | Not here: it loads a native module built on that machine |
+| **Driving the browser from a script** (the agent bridge) | Not here yet: it listens on a Unix socket, and a named pipe is a job of its own |
+| **KDE Connect** (send a page to the phone) and **hyprctl** (window rules) | Not there to ask; the entries stay out of the menu, as they do on a Linux desktop without them |
+| **Memory pressure** on the "what this is costing" page | Empty: Windows has no counter for "was anything stalled waiting for memory", and the one it has answers a different question |
+| **Which graphics card draws the pages** | Listed, not chosen — Windows keeps that per program in Settings → System → Display → Graphics, and the program here is `python.exe`, shared with every Python program on the machine |
+| **Keeping the screen awake** through systemd-inhibit | The same promise, through `SetThreadExecutionState` |
+| **Reading a page aloud** through speech-dispatcher | The same, through the synthesiser in .NET |
+| **An address another program owns** (`discord:`, `magnet:`) looked up by program name | Handed to the shell, which is what keeps that register here |
+| **Desktop notifications** through notify-send | The browser's own line in the window; a Windows toast needs an app registration a script does not have |
+
+Anything that is a *program* rather than a desktop service — mpv, VLC,
+yt-dlp, ffmpeg, ClamAV, the 1Password CLI — is found on the PATH here
+exactly as it is there, and the feature is present when the program is.
 
 ## Linux
 

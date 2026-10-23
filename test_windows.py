@@ -10,7 +10,7 @@ breaks, because they are the parts nobody upstream is testing.
 
 So this goes at them the only ways Linux allows:
 
-  * take the statements that build DATA_DIR and the five data files
+  * take the statements that build BROWSER_HOME and the five data files
     straight out of browser.py and run those, with a sys.platform and an
     environment of our choosing. Faking sys.platform and importing does
     not work — the standard library reads it too, and shutil goes
@@ -25,14 +25,19 @@ Never against real data: APP_DIR, the config and every data file are
 redirected into a throwaway directory, and the updater is never allowed
 to write into the repository.
 
-KNOWN GAP, deliberately not covered here: the unpacking loop in
-Bridge._zip_update joins an entry name from the downloaded zip onto
-APP_DIR without checking the result stays inside APP_DIR, so an archive
-containing "repo-main/../../x" would be written outside the folder.
-Reaching it means controlling the GitHub repository or breaking TLS to
-codeload.github.com, so it is not a hole anyone can walk through from
-outside — but it is not checked, and a test that asserted it was safe
-would be asserting something untrue. Flagged rather than papered over.
+What used to stand here as a KNOWN GAP is now one of the checks: the
+unpacking loop joined an entry name from the downloaded zip onto
+APP_DIR without asking whether the result was still inside APP_DIR, so
+an archive carrying "repo-main/../../x" would have been written outside
+the folder. Every entry goes through _zip_target now, which refuses
+anything that lands elsewhere and abandons the whole update rather than
+skipping one file — and the archive below carries exactly that entry.
+
+Three of the four regions this suite was written for have moved into
+~/browser itself (the data folder's Windows default, the icacls helper,
+the taskbar identity and the .ico), where test_winbranch.py reaches
+them and runs on every Linux push. They are still checked here too,
+against this file: a port that dropped one is what this is for.
 """
 
 import io
@@ -67,7 +72,7 @@ def check(name, cond, detail=""):
 
 
 # --- the constants, as Windows would build them ----------------------
-# browser.py decides DATA_DIR at import time from sys.platform. Faking
+# browser.py decides BROWSER_HOME at import time from sys.platform. Faking
 # sys.platform and importing the module does not work — the standard
 # library reads it too, and shutil goes looking for _winapi — so take
 # the statements that build these six names straight out of the source
@@ -75,7 +80,7 @@ def check(name, cond, detail=""):
 # code from the real file, and it is the whole of that region.
 import ast  # noqa: E402
 
-WANTED = {"DATA_DIR", "CONFIG_FILE", "HOSTS_FILE", "HISTORY_FILE",
+WANTED = {"BROWSER_HOME", "CONFIG_FILE", "HOSTS_FILE", "HISTORY_FILE",
           "DOWNLOADS_FILE", "BOOKMARKS_FILE"}
 SRC = (HERE / "browser.py").read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
@@ -118,8 +123,8 @@ check("the region that builds them was found in browser.py, all of it",
 appdata = str(SCRATCH / "AppData" / "Local")
 got = build("win32", {"LOCALAPPDATA": appdata})
 want = str(Path(appdata) / "browser")
-check("DATA_DIR is %LOCALAPPDATA%\\browser", got["DATA_DIR"] == want,
-      got["DATA_DIR"])
+check("BROWSER_HOME is %LOCALAPPDATA%\\browser",
+      got["BROWSER_HOME"] == want, got["BROWSER_HOME"])
 for key in ("CONFIG", "HISTORY", "DOWNLOADS", "HOSTS", "BOOKMARKS"):
     name = key + "_FILE"
     check("%s.json sits under it" % key.lower(),
@@ -130,13 +135,13 @@ check("nothing landed in a POSIX share directory",
 no_appdata = build("win32", {})
 check("with no %LOCALAPPDATA% it falls back to the home directory, "
       "not to a POSIX path",
-      no_appdata["DATA_DIR"] == str(Path.home() / "browser"),
-      no_appdata["DATA_DIR"])
+      no_appdata["BROWSER_HOME"] == str(Path.home() / "browser"),
+      no_appdata["BROWSER_HOME"])
 
 posix = build("linux", {})
 check("and on Linux the very same code gives the POSIX path",
-      posix["DATA_DIR"] == str(Path.home() / ".local/share/browser"),
-      posix["DATA_DIR"])
+      posix["BROWSER_HOME"] == str(Path.home() / ".local/share/browser"),
+      posix["BROWSER_HOME"])
 
 # and the Linux reading of the same file is still the Linux one, so a
 # developer running this on Linux is unaffected by the branch
@@ -148,9 +153,9 @@ REAL_CONFIG = B.CONFIG_FILE
 REAL_CONFIG_MTIME = (REAL_CONFIG.stat().st_mtime
                      if REAL_CONFIG.exists() else None)
 
-check("imported normally, DATA_DIR is the POSIX one",
-      str(B.DATA_DIR) == str(Path.home() / ".local/share/browser"),
-      str(B.DATA_DIR))
+check("imported normally, BROWSER_HOME is the POSIX one",
+      str(B.BROWSER_HOME) == str(Path.home() / ".local/share/browser"),
+      str(B.BROWSER_HOME))
 
 # --- the ACL helper --------------------------------------------------
 print("\nmaking a file owner-only where there is no chmod to do it")
@@ -341,6 +346,50 @@ check("the new sha is recorded, which is the only record of the version",
 check("and written out", b2.browser.saved == 1)
 check("no half-written .new file is left beside anything",
       not list(dest.rglob("*.new")))
+
+# an archive that names somewhere outside the folder
+dest = SCRATCH / "app-escape"
+(dest / "tools").mkdir(parents=True)
+(dest / "browser.py").write_bytes(b"old")
+outside = SCRATCH / "app-escape-neighbour"
+outside.mkdir()
+(outside / "stolen.txt").write_bytes(b"theirs")
+cfg = {"updateSha": SHA_A}
+b5 = run_update(cfg, [refs(SHA_B), make_zip([
+    ("browser-windows-main/browser.py", b"new code"),
+    ("browser-windows-main/../../app-escape-neighbour/stolen.txt", b"ours now"),
+])], dest)
+check("an entry that names its way out of the folder fails the update",
+      len(b5.updateFinished.sent) == 1
+      and b5.updateFinished.sent[0].startswith("Update failed:"),
+      b5.updateFinished.sent)
+check("...and the message says where it was pointed",
+      "outside the browser folder" in b5.updateFinished.sent[0],
+      b5.updateFinished.sent)
+check("nothing was written outside the folder",
+      (outside / "stolen.txt").read_bytes() == b"theirs")
+check("and the browser itself was not half-replaced either",
+      (dest / "browser.py").read_bytes() == b"old")
+check("no .new file is left behind by the refusal",
+      not list(dest.rglob("*.new")) and not list(outside.rglob("*.new")))
+check("the sha is not adopted: this install is not that version",
+      cfg["updateSha"] == SHA_A, cfg)
+
+real_app = B.APP_DIR
+try:
+    B.APP_DIR = dest
+    for bad in ("../x", "a/../../x", str(outside / "stolen.txt")):
+        try:
+            B._zip_target(bad)
+            escaped = True
+        except OSError:
+            escaped = False
+        check("_zip_target refuses %r" % bad, not escaped)
+    inside = B._zip_target("tools/win_port.py")
+    check("and still allows a normal nested entry",
+          inside == dest / "tools" / "win_port.py", inside)
+finally:
+    B.APP_DIR = real_app
 
 # a fresh install: no sha recorded, and the zip is what is already here
 dest = SCRATCH / "app-fresh"

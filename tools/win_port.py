@@ -76,11 +76,16 @@ def matches(name, patterns):
 
 
 def names(seq):
-    """The file lists carry inline commentary — entries starting with an
-    underscore are prose, not paths. JSON has no comments, and a list of
-    two dozen file names with no explanation is how the next person
-    guesses wrong."""
-    return [n for n in seq if not n.startswith("_")]
+    """The file lists carry inline commentary — entries starting with a
+    '#' are prose, not paths. JSON has no comments, and a list of a
+    hundred file names with no explanation is how the next person
+    guesses wrong.
+
+    It was an underscore until a port went looking for why the Windows
+    _boot.py was two months behind the Linux one: it is listed, and the
+    rule that made the prose work quietly made that one entry prose
+    too. A '#' cannot be the first character of a file in this tree."""
+    return [n for n in seq if not n.startswith("#")]
 
 
 def apply_substitutions(files, rules):
@@ -147,7 +152,12 @@ def three_way(base, ours, theirs, label):
 
 def generate(manifest, to_rev, verbose=True):
     """Build the whole tree in memory. Returns {name: text}."""
-    linux = Path(manifest["linux_repo"]).expanduser()
+    # WIN_PORT_LINUX_REPO points the port at another checkout for one run.
+    # The manifest is committed and public, so it names ~/browser; a second
+    # clone (a bare mirror of the Linux repo, a worktree at some other
+    # commit) is a reason to override it, not a reason to edit it.
+    linux = Path(os.environ.get("WIN_PORT_LINUX_REPO")
+                 or manifest["linux_repo"]).expanduser()
     base_rev = manifest["ported_from"]
     if not linux.is_dir():
         raise PortError("linux_repo %s is not there" % linux)
