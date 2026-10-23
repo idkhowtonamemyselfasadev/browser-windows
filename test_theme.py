@@ -270,5 +270,14 @@ missing = [k for k in B.UI_STRINGS["en"] if k.startswith("theme")
 check("English and German both have them", not missing, ", ".join(missing))
 
 print("\n%d checks failed" % FAILS)
+# the Settings pane goes down before the process does: left open
+# through interpreter teardown it takes the engine with it now and
+# then, with every check already passed
+try:
+    win.close_settings()
+    spin(300)
+except Exception:
+    pass
 app.quit()
-sys.exit(1 if FAILS else 0)
+sys.stdout.flush()
+os._exit(1 if FAILS else 0)
