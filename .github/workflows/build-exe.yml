@@ -8,6 +8,7 @@ on:
   push:
     branches: [main]
     paths-ignore: ["test_*.py", "tests/**", "screenshots/**", "*.md"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -58,7 +59,13 @@ jobs:
           & $iscc "/DAppVersion=1.0.${{ github.run_number }}" packaging\installer.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BrowserSetup
+          path: dist/BrowserSetup.exe
+
       - name: Publish release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
