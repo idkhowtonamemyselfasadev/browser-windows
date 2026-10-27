@@ -533,6 +533,48 @@
       "name": "and no row offers notify-send",
       "pattern": "\"desktopNotifyHint\":\"Through notify-send",
       "count": 0
+    },
+    {
+      "file": "README.md",
+      "name": "the README says where data lives on Windows",
+      "pattern": "%LOCALAPPDATA%\\\\browser\\\\",
+      "min": 2
+    },
+    {
+      "file": "README.md",
+      "name": "the README installs with install.bat, not install.sh",
+      "pattern": "\\binstall\\.bat\\b",
+      "min": 2
+    },
+    {
+      "file": "README.md",
+      "name": "the README runs it the Windows way",
+      "pattern": "py -3 browser\\.py",
+      "min": 1
+    },
+    {
+      "file": "README.md",
+      "name": "the README is badged Windows",
+      "pattern": "badge/windows-",
+      "min": 1
+    },
+    {
+      "file": "README.md",
+      "name": "the README still explains the port tooling",
+      "pattern": "tools/win_port\\.py",
+      "min": 2
+    },
+    {
+      "file": "README.md",
+      "name": "the README keeps the table of what Linux has and this does not",
+      "pattern": "^## What is not here$",
+      "min": 1
+    },
+    {
+      "file": "README.md",
+      "name": "the README explains the vault ACL",
+      "pattern": "\\bACL\\b",
+      "min": 1
     }
   ],
   "_hand_regions_readme": [
