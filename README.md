@@ -415,6 +415,25 @@ The Windows-only code paths cannot run on the machine this is built on, so
 they are covered by `--check` rather than by tests. Everything else is covered
 by the Linux suite, run here against this `browser.py`.
 
+### Unsettled, for want of a Windows machine
+
+Two things in `browser.py` are written down here rather than guessed at, so
+that the next person does not read them and assume they were reasoned about:
+
+- **Whether a CDM path with a space in it survives the flag.** The comment
+  above `_find_widevine()` says Qt splits `QTWEBENGINE_CHROMIUM_FLAGS` on
+  spaces, so such a path "cannot be passed this way at all"; the code that
+  actually launches passes `--widevine-path="%s"`, quoted. Every Windows CDM
+  path contains *Program Files*. If the quoting holds, the earlier comment is
+  overcautious; if it does not, DRM video works here only when Chrome's CDM
+  happens to sit under `%LOCALAPPDATA%` — a defect that looks exactly like a
+  working feature. One run on Windows settles it.
+- **The VA-API block is gated on the flag string, not on the platform.** The
+  Linux hardware-decode features, and the `/proc/driver/nvidia/version` check
+  beside them, are evaluated here too. Almost certainly inert, because
+  Chromium ignores features it does not know, but nothing declares it either
+  way.
+
 ## Uninstall
 
 Delete the *Browser* shortcut from your desktop and remove the folder you
