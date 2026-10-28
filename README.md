@@ -45,8 +45,16 @@ the window, six interface looks, per-site proxy routing, and no telemetry of any
 
 ## Install
 
-Download this repository (**Code → Download ZIP**), unzip it somewhere permanent, and run
-**`install.bat`**.
+**Easiest:** download
+[**BrowserSetup.exe**](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest/download/BrowserSetup.exe)
+and run it. It installs for your user only (no admin prompt), adds a Start menu entry and, if
+you want, a desktop shortcut. Python is bundled, so nothing else needs installing. The installer
+is not signed, so SmartScreen will warn you: click **More info → Run anyway**. Every push to
+`main` builds a new one (`.github/workflows/build-exe.yml`). The exe does not update itself; to
+get a newer version, download a new installer.
+
+**From source:** download this repository (**Code → Download ZIP**), unzip it somewhere
+permanent, and run **`install.bat`**.
 
 The installer fetches Python through winget if it is missing, installs PyQt6 WebEngine,
 and puts a *Browser* shortcut on the desktop. The shortcut starts the same Python that
