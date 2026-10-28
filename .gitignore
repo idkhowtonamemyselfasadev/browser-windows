@@ -11,6 +11,14 @@ downloads.json
 bookmarks.json
 passwords.json
 passwords.key
+passwords-meta.json
+cookies.txt
+privacy.json
+hosts.json
+tabs.txt
+crash.log
+edit.txt
+1password-token
 *.token
 *token.txt
 .env

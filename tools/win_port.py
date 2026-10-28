@@ -24,6 +24,12 @@ Usage:
     tools/win_port.py --to <commit> --dry-run  # report, write nothing
     tools/win_port.py --check                  # verify the tree as it is
 
+--check looks at this tree only: the markers hold and every .py parses.
+That is not a parity check, and it used to read like one -- a tree forty
+commits behind Linux passes it cleanly, because nothing in it compares
+anything against the Linux repo. It now also reports how far behind the
+tree is, which is the question somebody running --check actually has.
+
 Nothing is written until every file has been generated and every marker
 has passed, so a failed port leaves the working tree untouched.
 """
@@ -243,6 +249,60 @@ def generate(manifest, to_rev, verbose=True):
     return files, to_sha
 
 
+def soft(repo, *args):
+    """git that answers None instead of raising. The drift report has to
+    be able to say "the Linux repo is not here" without failing a check
+    that is otherwise about this tree alone."""
+    out = subprocess.run(["git", "-C", str(repo), *args],
+                         capture_output=True, text=True)
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def drift(manifest):
+    """How far this tree is behind the Linux repo it comes from.
+
+    The markers say our regions are intact; they say nothing about the
+    edition being current, and those are different questions. Returns
+    the lines to print -- it never raises, because being unable to find
+    the Linux repo is a thing to report, not a reason to fail.
+    """
+    # the same override generate() honours, or --check would report drift
+    # against one tree while a port read another
+    linux = Path(os.environ.get("WIN_PORT_LINUX_REPO")
+                 or manifest["linux_repo"]).expanduser()
+    base = manifest["ported_from"]
+    if not linux.is_dir():
+        return ["  linux repo   %s is not here, so drift is unknown" % linux]
+    head = soft(linux, "rev-parse", "--short", "HEAD")
+    if head is None:
+        return ["  linux repo   %s is not a git repo, so drift is unknown"
+                % linux]
+    out = ["  linux repo   %s  (HEAD %s)" % (linux, head)]
+    if soft(linux, "cat-file", "-t", base) != "commit":
+        out.append("  behind       unknown: ported_from %s is not a commit "
+                   "in that repo" % base[:9])
+        return out
+    behind = soft(linux, "rev-list", "--count", "%s..main" % base)
+    if behind is None:
+        out.append("  behind       unknown: no main branch in that repo")
+    elif behind == "0":
+        out.append("  behind       nothing: this tree is level with main")
+    else:
+        out.append("  behind       %s commit(s) of main, ported_from is %s"
+                   % (behind, base[:9]))
+        out.append("               see them: tools/win_port.py --to main "
+                   "--dry-run")
+    # Uncommitted work in the source is invisible to a port: generate()
+    # reads blobs out of commits (git show <rev>:<path>), never the
+    # working tree. A feature sitting there unstaged cannot be ported at
+    # all, which is worth saying out loud rather than discovering after.
+    dirty = soft(linux, "status", "--porcelain")
+    if dirty:
+        out.append("  uncommitted  %d file(s) there, none of which a port "
+                   "can see" % len(dirty.splitlines()))
+    return out
+
+
 def verify(files, manifest, verbose=True):
     bad = check_markers(files, manifest["markers"])
     for name, text in files.items():
@@ -266,7 +326,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would happen, write nothing")
     ap.add_argument("--check", action="store_true",
-                    help="only verify the tree as it stands")
+                    help="verify this tree's markers, and report how far "
+                         "behind Linux it is")
     args = ap.parse_args()
 
     manifest = load_manifest()
@@ -284,8 +345,9 @@ def main():
         except PortError as exc:
             print("\n%s" % exc, file=sys.stderr)
             return 1
-        print("  tree is a valid Windows edition of linux %s"
-              % manifest["ported_from"])
+        print("  checked: this tree's own regions, not parity with Linux")
+        for line in drift(manifest):
+            print(line)
         return 0
 
     print("Regenerating the Windows edition\n")

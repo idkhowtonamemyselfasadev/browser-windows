@@ -1,30 +1,113 @@
+<div align="center">
+
 # browser
 
-A dark, keyboard-driven web browser built on Chromium — the Windows edition.
-One readable Python file, Qt WebEngine underneath, pitch black with Catppuccin
-Mocha text — sharp corners, thin outlines, no clutter. Even Google is black.
+**A keyboard-driven web browser in a single Python file — the Windows edition.**
+
+Built on Chromium through Qt WebEngine. 116 themes that recolour the websites as well as
+the window, six interface looks, per-site proxy routing, and no telemetry of any kind.
+
+[![Licence: GPLv3](https://img.shields.io/badge/licence-GPLv3-5c7cfa?style=flat-square)](LICENSE)
+[![Python 3](https://img.shields.io/badge/python-3-9bb1ff?style=flat-square)](https://www.python.org/)
+[![Engine: Qt WebEngine](https://img.shields.io/badge/engine-Qt%20WebEngine-74c7ec?style=flat-square)](https://doc.qt.io/qt-6/qtwebengine-index.html)
+[![Telemetry: none](https://img.shields.io/badge/telemetry-none-a6e3a1?style=flat-square)](#overview)
+[![Windows](https://img.shields.io/badge/windows-%E2%9C%93-cba6f7?style=flat-square)](#install)
+
+![The browser darkening Wikipedia](screenshots/dark-mode.png)
+
+<sub>Wikipedia ships no dark theme of its own; the browser applies one.</sub>
+
+</div>
+
+---
+
+## Overview
+
+- **A single file.** The whole application is `browser.py`. No build step, no plugin
+  framework and no dependency tree to audit: edit it, restart, and the change is live.
+- **116 themes, applied to the web as well.** Choosing Gruvbox recolours more than the
+  tabs: the websites are rendered in the same palette. A single setting turns that off.
+- **Six interface looks.** A theme decides what colour the browser is; a look decides
+  what shape it is. Classic, Taskbar, Dock, Circle, Liquid Glass and Flat mono, each of
+  which works with all 116 palettes.
+- **An address bar that computes.** `12*64+3`, `5 in to mm`, `200 c to f`,
+  `days until 24.12.`, `time in tokyo`. Everything is evaluated locally; no query leaves
+  the machine.
+- **Virtual browsers.** Independent sessions within one window, each with its own cookie
+  jar, so two accounts on the same site can be signed in at the same time.
+- **A password manager that asks which account to use** before filling anything, and
+  withholds the stored password from page scripts until the form is genuinely clicked.
+  Its file is given an ACL of this user alone, because the POSIX `chmod` used elsewhere
+  does nothing on Windows.
+- **Per-site proxy routing that fails closed.** A rule pointing at an unreachable proxy
+  blocks the site rather than silently connecting directly.
+- **No telemetry, no account, no sync.** All data remains in `%LOCALAPPDATA%\browser\`.
+
+## Install
+
+**Easiest:** download
+[**BrowserSetup.exe**](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest/download/BrowserSetup.exe)
+and run it. It installs for your user only (no admin prompt), adds a Start menu entry and, if
+you want, a desktop shortcut. Python is bundled, so nothing else needs installing. The installer
+is not signed, so SmartScreen will warn you: click **More info → Run anyway**. Every push to
+`main` builds a new one (`.github/workflows/build-exe.yml`). The exe does not update itself; to
+get a newer version, download a new installer.
+
+**From source:** download this repository (**Code → Download ZIP**), unzip it somewhere
+permanent, and run **`install.bat`**.
+
+The installer fetches Python through winget if it is missing, installs PyQt6 WebEngine,
+and puts a *Browser* shortcut on the desktop. The shortcut starts the same Python that
+pip installed into, which matters on a machine with more than one.
+
+To run it without installing:
+
+```
+py -3 browser.py
+```
+
+Requirements: Python 3 and PyQt6 WebEngine.
+
+If the desktop shortcut ever loses its icon and stops responding, the folder has been
+moved or renamed — run `install.bat` again from its new location to rebuild it.
+
+## A closer look
+
+### 116 themes, and the websites wear them too
+
+Settings → Theme has all 116, searchable, each shown as a swatch of its own colours and
+applied on the spot — no restart, and open tabs change with it. 77 are dark, 28 light and
+11 bring a face and a texture of their own. Most are credited palettes; the default is
+pitch black with [Catppuccin Mocha](https://catppuccin.com/palette/) text.
+
+### Six looks
+
+A theme decides what colour the browser is; a look decides what shape it is. Every look
+works with all 116 palettes, because a look defines geometry only and never a colour.
+
+| Look | What it does |
+|---|---|
+| **Classic** | The browser as it is drawn — the default. |
+| **Taskbar** | A strip along the bottom with a start button, the pinned sites and a clock. |
+| **Dock** | A floating dock over the page with icon magnification, and a now-playing widget that works the transport of whatever is making the sound. |
+| **Circle** | The start page becomes a ring: search in the middle, the quick links orbiting it, turned by the mouse wheel. |
+| **Liquid Glass** | Frosted, translucent chrome: the wallpaper shows softly through the tabs, the toolbar and the menus. |
+| **Flat mono** | One flat tone, no gradients and no borders — the quietest of the six. |
+
+### Dark by default, not by filter
+
+Sites that ship a dark theme are asked for it. Light-only sites are darkened
+automatically. Sites that are already dark are left untouched, which keeps heavy pages
+fast.
+
+### A configurable start page
 
 ![Start page](screenshots/start-page.png)
 
-## Design principles
-
-**Real web compatibility.** Chromium rendering through Qt WebEngine, with
-persistent cookies and logins. Sites behave as they do everywhere else.
-
-**Everything in one file.** The whole application is a single `browser.py`
-you can read end to end. No build step, no plugin framework, no dependency
-tree to audit.
-
-**Dark by default, not by filter.** Sites that ship a dark theme are asked
-for it. Light-only sites are darkened automatically. Sites that are already
-dark are left alone, which keeps heavy pages fast.
-
-**One palette drives everything.** A theme recolours the window, the tabs,
-the menus and every page the browser brings with it — from one table of
-colours, applied without a restart. It never touches a website.
-
-**Nothing leaves the machine that you did not ask for.** No telemetry, no
-account, no sync. Browsing data stays in `%LOCALAPPDATA%\browser\`.
+A clock, a search field, editable quick links and background images of your own. The
+quick links are the pinned sites: pinning from a page's context menu, from the taskbar's
+`+`, or here all write to the same list, and clicking a pin brings its existing tab
+forward rather than opening a second one.
 
 ## Features
 
@@ -180,42 +263,6 @@ account, no sync. Browsing data stays in `%LOCALAPPDATA%\browser\`.
   running window; works as the system default browser
 - **Built-in updates** — pulls the newest version from this repository
 
-## Screenshots
-
-![Automatic dark mode](screenshots/dark-mode.png)
-
-*Wikipedia has no dark theme of its own — the browser darkens it. A site
-that serves its own dark theme is left alone.*
-
-## Install
-
-**Easiest:** download
-[**BrowserSetup.exe**](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest/download/BrowserSetup.exe)
-and run it. It installs for your user only (no admin prompt), adds a Start menu
-entry and, if you want, a desktop shortcut. Python is bundled, so nothing else
-needs installing. The installer is not signed, so SmartScreen will warn you:
-click **More info → Run anyway**. Every push to `main` builds a new one
-(`.github/workflows/build-exe.yml`). The exe does not update itself; to get a
-newer version, download a new installer.
-
-**From source:** download this repository (**Code → Download ZIP**), unzip it somewhere
-permanent, and run **`install.bat`**.
-
-The installer fetches Python through winget if it is missing, installs PyQt6
-WebEngine, and puts a *Browser* shortcut on your desktop.
-
-To run it without installing:
-
-```
-py -3 browser.py
-```
-
-Requirements: Python 3 and PyQt6 WebEngine.
-
-If the desktop shortcut ever loses its icon and stops responding, the folder
-has been moved or renamed — run `install.bat` again from its new location to
-rebuild the shortcut.
-
 ## Keyboard shortcuts
 
 Shortcuts are handled by the browser itself, so they are the same on every
@@ -281,7 +328,7 @@ the same key again) closes them, and you are back on the page you came
 from. They never appear in the tab strip or the address bar, and they
 are never reopened as tabs when the browser starts.
 
-## Configuration
+## Configuration and data
 
 Most settings live in the settings pane (`Ctrl+,`), stored in
 `%LOCALAPPDATA%\browser\config.json`. The sources are short and meant to be
@@ -343,9 +390,21 @@ the file ACL on the vault, the taskbar identity and the font stacks.
 ```
 tools/win_port.py --to <linux-commit> --dry-run   # report, write nothing
 tools/win_port.py --to <linux-commit>             # regenerate
-tools/win_port.py --check                         # verify the tree as it is
+tools/win_port.py --check                         # this tree, and how far behind it is
+tools/port_map.py                                 # which commits the conflicts come from
 tools/runall.sh                                   # the offscreen test suite
 ```
+
+`win_port.json` names `~/browser` as the Linux checkout because this file is
+public; `WIN_PORT_LINUX_REPO` points a single run at another clone instead,
+and both `--check` and `port_map.py` honour it, so a drift report always
+describes the tree a port would actually read.
+
+`--check` verifies this tree — every marker holds, every `.py` parses — and
+then reports the drift: which clone, how many commits of its `main` this tree
+is behind, and how much uncommitted work sits there that no port can see. It
+is deliberately two statements rather than one, because the markers passing
+says nothing about the edition being current.
 
 `browser.py` is a three-way merge — the base is the Linux commit this tree was
 last generated from, which `tools/win_port.json` records — so the Windows
@@ -364,8 +423,31 @@ The Windows-only code paths cannot run on the machine this is built on, so
 they are covered by `--check` rather than by tests. Everything else is covered
 by the Linux suite, run here against this `browser.py`.
 
+### Unsettled, for want of a Windows machine
+
+Two things in `browser.py` are written down here rather than guessed at, so
+that the next person does not read them and assume they were reasoned about:
+
+- **Whether a CDM path with a space in it survives the flag.** The comment
+  above `_find_widevine()` says Qt splits `QTWEBENGINE_CHROMIUM_FLAGS` on
+  spaces, so such a path "cannot be passed this way at all"; the code that
+  actually launches passes `--widevine-path="%s"`, quoted. Every Windows CDM
+  path contains *Program Files*. If the quoting holds, the earlier comment is
+  overcautious; if it does not, DRM video works here only when Chrome's CDM
+  happens to sit under `%LOCALAPPDATA%` — a defect that looks exactly like a
+  working feature. One run on Windows settles it.
+- **The VA-API block is gated on the flag string, not on the platform.** The
+  Linux hardware-decode features, and the `/proc/driver/nvidia/version` check
+  beside them, are evaluated here too. Almost certainly inert, because
+  Chromium ignores features it does not know, but nothing declares it either
+  way.
+
 ## Uninstall
 
 Delete the *Browser* shortcut from your desktop and remove the folder you
 unzipped. Browsing data in `%LOCALAPPDATA%\browser\` can be removed
 separately.
+
+## Licence
+
+GNU General Public License v3.0 — see [LICENSE](LICENSE).
