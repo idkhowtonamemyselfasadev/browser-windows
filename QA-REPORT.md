@@ -269,9 +269,53 @@ a forgiving fallback returning a plausible wrong value.
 | W-B04 | 17 UI strings the pages ask for and the table never had, including `micTestTitle` vs `mictestTitle` — one capital apart, so the browser *had* the string and the page could not find it. `translateLang` defaults to `de`, so the microphone page was English **for the default user** | Medium | fixed |
 | W-B05 | `settings.html:4510` calls `refreshSettings()`, which is defined in `start.html`. Seven Appearance buttons do their work and never refresh the page | Medium | **OPEN — upstream** |
 | W-B06 | `#11111b` on `mictest.html:25`, the mic meter track, is not in `THEME_SOURCE`, so it stays near-black on all 116 themes | Low | **OPEN — upstream** |
-| W-B08 | `download_dir(create=True)` creates the folder the user *chose* and returns the **default** without creating it. On a machine with no `~/Downloads`, it hands back a path that does not exist — and the docstring's whole point is that `create=True` conjures the folder up | Medium | **OPEN — upstream** |
+| W-B08 | `download_dir(create=True)` creates the folder the user *chose* and returns the **default** without creating it. On a machine with no `~/Downloads`, it hands back a path that does not exist — and the docstring's whole point is that `create=True` conjures the folder up | Medium | **fixed** |
 | W-B09 | `pretty_url()`'s `xn--` branch is dead — `QUrl.host()` already decodes, so the test is never true — and its comment credits decoding with the homograph protection when decoding is the hazard. **Not a security hole here:** `lookalike_warning()` is wired to the address bar and fires on all three attacks | Low | **OPEN — upstream** |
 | W-B07 | Settings → Performance offers *"Sleep background tabs before the machine swaps"* with the hint *"Reads the kernel's own memory-pressure figure (PSI)"*. Windows has no PSI and no `/proc`, so that half can never fire — the switch goes on and the timer runs for nothing | Medium | **OPEN — upstream** |
+
+**W-B08 detail**, and the fix. The docstring's whole distinction is that
+`create=True` conjures the folder up; the code honoured that only for a folder he
+had *picked*. The one path never created was the default — which is also where a
+picked folder on an unplugged external disk falls through to, the case the
+docstring itself names ("or picked one that has since gone away").
+
+Proved in a throwaway `HOME` with no `Downloads`, both directions, because
+`create=False` has a promise of its own that a careless fix breaks:
+
+                                   before fix   after fix
+    create=True,  folder exists after  False        True
+    create=False, folder exists after  False        False      (must stay False)
+    chosen folder still made                        True
+    chosen unmakeable → default made                True
+    impossible default raises                       None
+
+`if create:` + `DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)` in a try,
+falling through on `OSError` — best effort like the branch above, since a
+download into a folder that cannot be made fails either way and raising there
+would take the window with it.
+
+**Windows makes this worse, not better.** `DOWNLOAD_DIR` here is whatever the
+shell's `FOLDERID_Downloads` answers (`_windows_downloads`), and Explorer lets
+anyone move that onto another drive: Properties > Location. A moved Downloads on
+a disk that is not mounted is the same absent folder. **UNVERIFIED — never
+executed:** no Windows machine exists here, so that is read off the API contract,
+not seen. The comment is pinned as port marker 60 so a regeneration cannot drop
+it quietly.
+
+Guard: `test_downloaddir.py`, adopted from linux rather than written again — the
+bug is invisible on any machine that happens to have a `Downloads`, so the suite
+has to **make** that environment rather than find it. 14 checks, and it bites:
+**3 FAIL** against this repo's `HEAD` copy of `browser.py`, 0 after. It is also
+why mac's reading and media suites passed at 11:13 and failed at 13:00 on
+identical code — not flakiness, the throwaway `HOME` they were handed.
+
+Then the nine suites that touch `download_dir`, `save_article` or `downloadDir`
+re-run in a `HOME` that started with **0 entries** — the environment that used to
+decide the result: `test_capture2`, `test_files`, `test_downloads`, `test_gaps3`,
+`test_read3`, `test_reading2`, `test_saveimage`, `test_tools3`,
+`tests/test_private`. All nine exit 0, 0 FAILs. Afterwards that `HOME` holds one
+entry — `Downloads` — which is the fix doing its job under a real suite rather
+than under a probe.
 
 **W-B09 detail**, because a finding that says *"not a security hole"* needs its
 evidence as much as one that says it is. The decoded host really does read as the
@@ -310,6 +354,7 @@ through it. Present in all four editions at the same line.
 | `tests/test_workflow.py` | lints the PowerShell nothing here can execute |
 | `tests/test_leakguard.py` | nothing of the user's is in any file a port writes |
 | `tests/test_portbase.py` | the recorded port base is really an ancestor |
+| `test_downloaddir.py` | does `create=True` create the **default** too, and `create=False` still create nothing? (ported) |
 
 Each was made to fail on purpose before being trusted — the bug reintroduced in a
 `git archive` copy, never in the tree.
@@ -383,7 +428,7 @@ call `js()` nowhere and have some other cause.
 
 ## Suite status
 
-96 suites. Four full runs today, and the red set had **zero overlap** between any
+97 suites (96 plus `test_downloaddir.py`). Four full runs today, and the red set had **zero overlap** between any
 two of them:
 
     run 1   test_dev, test_themefix                        both pass alone

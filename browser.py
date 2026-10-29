@@ -47833,6 +47833,33 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
                 return path
             except OSError:
                 pass
+        if create:
+            # The default gets the same promise the chosen one does.
+            # It did not, and the docstring above says exactly when
+            # that bites: "or picked one that has since gone away" --
+            # the external disk that is not plugged in falls through to
+            # here, and so does a machine with no Downloads folder at
+            # all. Then save_article, the subtitle export and every
+            # ordinary download write into a folder that is not there.
+            #
+            # On Windows DOWNLOAD_DIR is whatever the shell's
+            # FOLDERID_Downloads answers (see _windows_downloads), and
+            # Explorer lets anyone move that onto another drive:
+            # Properties > Location. A moved Downloads on a disk that
+            # is not mounted is the same absent folder as the two above.
+            #
+            # It hides on any machine that happens to have a Downloads
+            # folder, which is nearly all of them, so this is an
+            # environment the suite has to make rather than find: see
+            # test_downloaddir.py.
+            #
+            # Best effort, like the branch above: a download into a
+            # folder that cannot be made fails either way, and raising
+            # here would take the window with it.
+            try:
+                DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
         return DOWNLOAD_DIR
 
     def watch_cookies(self, profile):

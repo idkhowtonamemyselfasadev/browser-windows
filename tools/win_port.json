@@ -807,6 +807,12 @@
       "name": "...and Qt is told the scheme, so its dialogs follow too",
       "pattern": "hints\\.setColorScheme\\(Qt\\.ColorScheme\\.Dark if dark",
       "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "a moved Downloads on an unmounted drive is the same absent folder",
+      "pattern": "Explorer lets anyone move that onto another drive",
+      "count": 1
     }
   ],
   "_hand_regions_readme": [
