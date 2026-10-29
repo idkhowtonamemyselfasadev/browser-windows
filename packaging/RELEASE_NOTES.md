@@ -22,8 +22,12 @@ publisher, not that it found anything wrong in the file. It says this
 about every unsigned installer, including the first build of anything.
 
 If you would rather check the download first, the SHA-256 of
-`BrowserSetup.exe` is printed in the build log for this release, and you
-can compare it with `Get-FileHash BrowserSetup.exe` in PowerShell.
+`BrowserSetup.exe` is at the bottom of this page. Compare it in
+PowerShell:
+
+```
+Get-FileHash BrowserSetup.exe
+```
 
 ## What it does
 
