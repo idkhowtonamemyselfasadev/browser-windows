@@ -23,6 +23,34 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # the build number is the commit count, so the whole history
+          # has to be here -- a shallow clone counts 1 and every
+          # installer would call itself 1.0.1 again
+          fetch-depth: 0
+
+      - name: Work out the version
+        shell: pwsh
+        run: |
+          # VERSION holds the series a human chose; the build number is
+          # the commit count, which belongs to the repository. The old
+          # scheme used github.run_number, which belongs to the CI
+          # system: recreating this repo on 2026-10-29 reset it to 1 and
+          # published "Browser 1.0.1" on top of a 1.0.4, i.e. a
+          # downgrade, and it was heading for a collision with the
+          # build-3 tag that still points at an older commit.
+          $series = (Get-Content VERSION -Raw).Trim()
+          if ($series -notmatch '^[0-9]+\.[0-9]+$') {
+            Write-Error "VERSION must read MAJOR.MINOR, got '$series'"; exit 1
+          }
+          $build = (git rev-list --count HEAD).Trim()
+          if ([int]$build -lt 2) {
+            Write-Error "commit count is $build: the checkout is shallow, so this would publish 1.0.1 again (needs fetch-depth: 0)"
+            exit 1
+          }
+          $ver = "$series.$build"
+          "VER=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "version $ver  (series $series, commit count $build)"
 
       - uses: actions/setup-python@v5
         with:
@@ -51,13 +79,114 @@ jobs:
           Stop-Process -Id $p.Id -Force
           Get-Process QtWebEngineProcess -ErrorAction SilentlyContinue | Stop-Process -Force
 
+      - name: Trim the bundle
+        shell: pwsh
+        run: |
+          # The installer is 151 MB and most of that is Qt6WebEngineCore
+          # itself, which cannot go. What can go is ~17 MB of it:
+          #
+          #   debug copies of QtWebEngine's resources   ~10.5 MB
+          #   50 UI languages the browser does not offer ~6.6 MB
+          #
+          # PyInstaller's QtWebEngineCore hook collects Qt6/resources and
+          # Qt6/translations/qtwebengine_locales as whole directories --
+          # its own module docstring claims it takes only the four
+          # release .pak files, but the code passes the directory, so the
+          # 72 MB qtwebengine_devtools_resources.debug.pak ships too.
+          # There is no flag to narrow it, so the folder is pruned here,
+          # between PyInstaller and Inno Setup.
+          #
+          # NOT pruned, on purpose: opengl32sw.dll (19.7 MB on disk, 5.2
+          # in the installer) and d3dcompiler_47.dll (1.3 MB). They are
+          # the software rendering fallbacks, and the machines that need
+          # them are exactly the ones a consumer browser must not open
+          # black on -- a VM, an RDP session, a laptop with broken GPU
+          # drivers. 6.5 MB is not worth that, and there is no Windows
+          # machine here to prove it safe on.
+          $ErrorActionPreference = "Stop"
+          $root = "dist\Browser"
+          $before = (Get-ChildItem $root -Recurse -File | Measure-Object -Property Length -Sum).Sum
+
+          $qt6 = Get-ChildItem $root -Recurse -Directory -Filter Qt6 |
+                 Where-Object { Test-Path (Join-Path $_.FullName "resources") } |
+                 Select-Object -First 1
+          if (-not $qt6) {
+            Write-Error "no PyQt6\Qt6 directory with a resources\ folder under $root"
+            exit 1
+          }
+          Write-Host "Qt6 bundle at $($qt6.FullName)"
+
+          # Each prune asserts how many files it expects to match. A
+          # pattern that quietly matches nothing is the failure this
+          # whole step exists to produce savings against: it would build
+          # a 151 MB installer and report success.
+          function Prune($label, $files, $least) {
+            $list = @($files)
+            if ($list.Count -lt $least) {
+              Write-Error ("{0}: matched {1} file(s), expected at least {2}. The bundle layout changed, so this trim would silently save nothing." -f $label, $list.Count, $least)
+              exit 1
+            }
+            $bytes = ($list | Measure-Object -Property Length -Sum).Sum
+            $list | Remove-Item -Force
+            Write-Host ("  pruned {0,-42} {1,4} files {2,8:N1} MB" -f $label, $list.Count, ($bytes / 1MB))
+          }
+
+          $res = Join-Path $qt6.FullName "resources"
+          Prune "resources\*.debug.*" (Get-ChildItem $res -File | Where-Object { $_.Name -like "*.debug.*" }) 4
+
+          # The browser ships English and German (words-en.txt,
+          # words-de.txt), so those are the locales it can actually use.
+          $keepPak = @("en-US.pak", "en-GB.pak", "de.pak")
+          $loc = Join-Path $qt6.FullName "translations\qtwebengine_locales"
+          Prune "qtwebengine_locales (all but en, de)" (Get-ChildItem $loc -File -Filter *.pak | Where-Object { $keepPak -notcontains $_.Name }) 40
+
+          $tr = Join-Path $qt6.FullName "translations"
+          Prune "translations\*.qm (all but _en, _de)" (Get-ChildItem $tr -File -Filter *.qm | Where-Object { $_.Name -notmatch '_(en|de)\.qm$' }) 100
+
+          $after = (Get-ChildItem $root -Recurse -File | Measure-Object -Property Length -Sum).Sum
+          Write-Host ("folder {0:N1} MB -> {1:N1} MB (-{2:N1} MB on disk)" -f ($before / 1MB), ($after / 1MB), (($before - $after) / 1MB))
+
+          # The four release .pak files must survive: without them
+          # QtWebEngine starts and renders nothing, which is a blank
+          # window rather than a crash.
+          foreach ($need in @("qtwebengine_resources.pak", "qtwebengine_resources_100p.pak", "qtwebengine_resources_200p.pak", "qtwebengine_devtools_resources.pak")) {
+            if (-not (Test-Path (Join-Path $res $need))) { Write-Error "the prune removed $need, which QtWebEngine needs to render at all"; exit 1 }
+          }
+          foreach ($need in $keepPak) {
+            if (-not (Test-Path (Join-Path $loc $need))) { Write-Error "the prune removed $need"; exit 1 }
+          }
+          Write-Host "the files QtWebEngine needs are all still there"
+
       - name: Build installer
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
-          & $iscc "/DAppVersion=1.0.${{ github.run_number }}" packaging\installer.iss
+          if (-not (Test-Path $iscc)) { Write-Error "Inno Setup 6 is not at $iscc after installing it"; exit 1 }
+
+          # installer.iss uses ArchitecturesAllowed=x64compatible, which
+          # Inno Setup only understands from 6.3 on. On an older one it is
+          # an unknown value and ISCC stops -- so check the version here
+          # and say which directive is the reason, rather than leaving a
+          # future reader to decode "Unsupported architecture".
+          $v = [version](Get-Item $iscc).VersionInfo.FileVersion
+          Write-Host "Inno Setup $v at $iscc"
+          if ($v -lt [version]"6.3") {
+            Write-Host "Inno Setup $v is older than 6.3; upgrading for x64compatible support"
+            choco upgrade innosetup -y --no-progress
+            $v = [version](Get-Item $iscc).VersionInfo.FileVersion
+            Write-Host "Inno Setup is now $v"
+          }
+          if ($v -lt [version]"6.3") {
+            Write-Error "Inno Setup $v cannot build this script: ArchitecturesAllowed=x64compatible needs 6.3 or later"
+            exit 1
+          }
+
+          & $iscc "/DAppVersion=$env:VER" packaging\installer.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "dist\BrowserSetup.exe")) { Write-Error "ISCC reported success but dist\BrowserSetup.exe is not there"; exit 1 }
+          $mb = (Get-Item "dist\BrowserSetup.exe").Length / 1MB
+          Write-Host ("BrowserSetup.exe is {0:N1} MB" -f $mb)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -66,10 +195,47 @@ jobs:
 
       - name: Publish release
         if: github.event_name != 'pull_request'
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "build-${{ github.run_number }}" dist/BrowserSetup.exe
-          --title "Browser 1.0.${{ github.run_number }}"
-          --notes "Windows installer built from ${{ github.sha }}. Download BrowserSetup.exe and run it (SmartScreen: More info, Run anyway)."
-          --latest
+        run: |
+          $ErrorActionPreference = "Stop"
+          # gh release view is EXPECTED to fail the first time a version
+          # is published, so native exit codes must not be fatal here;
+          # they are checked by hand below instead. Without this, PS 7.4+
+          # turns that expected failure into a failed job.
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          $tag = "v$env:VER"
+          $exe = "dist\BrowserSetup.exe"
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $exe).Length
+          Write-Host "BrowserSetup.exe  $size bytes  sha256 $hash"
+
+          # The notes live in packaging/RELEASE_NOTES.md so the text a
+          # user reads on the download page can be reviewed like code
+          # rather than buried in this file. The SmartScreen walkthrough
+          # is the important half of it: the wall is the first thing a
+          # Windows user meets and its only button says "Don't run".
+          $notes = Get-Content packaging\RELEASE_NOTES.md -Raw
+          $notes = $notes.Replace("@VERSION@", $env:VER)
+          $notes = $notes.Replace("@SHA@", "${{ github.sha }}")
+          $notes = $notes + [Environment]::NewLine + "SHA-256 of BrowserSetup.exe: " + $hash + [Environment]::NewLine
+          $notesFile = Join-Path $env:RUNNER_TEMP "notes.md"
+          Set-Content -Path $notesFile -Value $notes -Encoding utf8
+
+          gh release view $tag | Out-Null
+          $exists = ($LASTEXITCODE -eq 0)
+          $LASTEXITCODE = 0
+
+          if ($exists) {
+            Write-Host "release $tag already exists: replacing the asset and the notes"
+            gh release upload $tag $exe --clobber
+            if ($LASTEXITCODE) { Write-Error "gh release upload failed"; exit $LASTEXITCODE }
+            gh release edit $tag --notes-file $notesFile --latest
+            if ($LASTEXITCODE) { Write-Error "gh release edit failed"; exit $LASTEXITCODE }
+          } else {
+            gh release create $tag $exe --title "Browser $env:VER" --notes-file $notesFile --latest
+            if ($LASTEXITCODE) { Write-Error "gh release create failed"; exit $LASTEXITCODE }
+          }
+          Write-Host "published $tag"

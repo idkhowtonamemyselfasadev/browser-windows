@@ -45,22 +45,52 @@ the window, six interface looks, per-site proxy routing, and no telemetry of any
 
 ## Install
 
-**Easiest:** download
-[**BrowserSetup.exe**](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest/download/BrowserSetup.exe)
-and run it. It installs for your user only (no admin prompt), adds a Start menu entry and, if
-you want, a desktop shortcut. Python is bundled, so nothing else needs installing. The installer
-is not signed, so SmartScreen will warn you: click **More info → Run anyway**. Every push to
-`main` builds a new one (`.github/workflows/build-exe.yml`). The exe does not update itself; to
-get a newer version, download a new installer.
+### The easy way: BrowserSetup.exe
 
-**From source:** download this repository (**Code → Download ZIP**), unzip it somewhere
-permanent, and run **`install.bat`**.
+[**Download BrowserSetup.exe**](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest/download/BrowserSetup.exe) — one file, with Python and Qt inside it, so there is nothing else to install. The releases page shows its exact size.
 
-The installer fetches Python through winget if it is missing, installs PyQt6 WebEngine,
-and puts a *Browser* shortcut on the desktop. The shortcut starts the same Python that
-pip installed into, which matters on a machine with more than one.
+**Windows will try to stop you. Here is how to get past it.**
 
-To run it without installing:
+Because this installer is not signed with a paid certificate, Windows shows a blue
+full-screen page first:
+
+> **Windows protected your PC**
+> Microsoft Defender SmartScreen prevented an unrecognised app from starting.
+
+The only button on that page says **Don't run**. The way through is the small
+**More info** link *above* the button:
+
+1. Click **More info**.
+2. A line appears: *Publisher: Unknown publisher*.
+3. Click the new **Run anyway** button.
+
+That is the whole wall. SmartScreen is saying it does not recognise the publisher —
+not that it found anything wrong in the file. It says the same about the first build
+of any program nobody has paid to sign.
+
+Then the installer runs. It:
+
+- installs into `%LOCALAPPDATA%\Programs\Browser`, **for your user only — no admin prompt**;
+- puts one **Browser** entry in the Start menu, so typing `brow` into Start finds it;
+- adds a desktop shortcut if you tick the box;
+- keeps your data in `%LOCALAPPDATA%\browser`, and leaves it there if you uninstall.
+
+Uninstall through **Settings → Apps → Installed apps → Browser**.
+
+The exe does not update itself. A new version is a new installer from the
+[releases page](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest).
+Every push to `main` builds one (`.github/workflows/build-exe.yml`), and each release
+lists the SHA-256 of its installer if you want to check the download with
+`Get-FileHash BrowserSetup.exe`.
+
+### The other way: from source
+
+Download this repository (**Code → Download ZIP**), unzip it somewhere permanent, and run
+**`install.bat`**. It fetches Python through winget if it is missing, installs PyQt6
+WebEngine, and puts a *Browser* shortcut on the desktop. The shortcut starts the same
+Python that pip installed into, which matters on a machine with more than one.
+
+To run it without installing anything:
 
 ```
 py -3 browser.py
