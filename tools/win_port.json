@@ -835,6 +835,7 @@
     ".github/workflows/build-exe.yml",
     ".gitignore",
     "CHANGELOG.md",
+    "QA-REPORT.md",
     "VERSION",
     "icon.ico",
     "install.bat",
