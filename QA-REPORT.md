@@ -365,6 +365,39 @@ pages came through `pages.py port` and the base is a pre-rewrite twin 83
 commits behind `origin/main`, so a port run today would refuse regardless of
 anything here. `win_port.py --check` already says which commit to repoint at.
 
+## The one guard that would have caught six of today's mistakes
+
+Not a bug in the browser. The most repeated mistake of the day was mine and
+three other sessions', and it has one shape: **a probe that cannot find what
+it claims to look for, reporting the absence as a clean result.**
+
+    a grep for a string the source wraps across two lines     all five "stale"
+    a substring test for a three-letter name                  86 of 118 files
+    a username read from $HOME under a throwaway HOME         matched its own fixture
+    a .replace() on an anchor the file does not contain       "SILENT -- the bug"
+    pgrep -f matching the waiting shell's own command line    20 minutes, twice
+    `... | grep FAIL; echo exit=$?`                           reports grep's status
+
+Every one returned something that read like good news. Four of the six were
+*about* the checks written to stop exactly this.
+
+The fix is one line, and it is mechanical rather than a thing to remember:
+
+    assert src.count(old) == 1, "anchor missing -- the probe would " \
+                                "have tested nothing again"
+
+Make the probe fail loudly when its anchor is absent. `runall.sh` opens with a
+nine-line warning about the pipe trap and it was still walked into three times
+in the repo that carries the warning, twice here. A warning is read once; an
+assert is typed every time.
+
+**And the detection path that worked best was not re-reading.** Of the six,
+the ones I caught myself I caught by noticing a *second* signal disagreeing
+with the first — stdout empty when it should not have been, a flat number
+across fifty times the tabs. One was caught by a teammate's result
+contradicting the probe, and the right move there was to check their claim
+rather than conclude they were wrong.
+
 ## Bugs found and fixed during this pass
 
 Each was invisible in the same way: a call into something that does not exist, or
