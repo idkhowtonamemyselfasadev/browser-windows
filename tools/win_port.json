@@ -56,6 +56,7 @@
     "tools/mock-op",
     "tools/webauthn_probe.py",
     "test_paneload.py",
+    "test_histrender.py",
     "test_update.py",
     "tests/pages6.py",
     "tests/test_subdomain.py",
