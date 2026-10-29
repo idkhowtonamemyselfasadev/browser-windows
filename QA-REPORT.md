@@ -464,6 +464,82 @@ Not measured, and worth saying rather than estimating: how long
 `free_idle_panes` waits, and what it costs to rebuild a freed pane on the next
 open. Both are answerable here once the port lands.
 
+## The sweep now reports this tree, and it is right to
+
+`gitguard/sweep.py` grew a fix tonight — its `walk()` used
+`ls-files --exclude-standard`, so **gitignored files were invisible to it**.
+With that closed, this tree reports `rc=1`: two patterns, seven occurrences,
+all of them in `.bughunt/PREAMBLE.md` — his home path twice and his name five
+times. (Not quoted here; quoting a pattern into this file is how the last
+round went wrong.)
+
+`.bughunt/` is another session's working notes about this repo, untracked and
+listed in `.git/info/exclude`. **Verified rather than assumed that it cannot
+get out:**
+
+  - git cannot carry it — ignored means never committed, and it is absent
+    from an `actions/checkout` entirely, so CI never sees it.
+  - the installer cannot carry it either. The bundle's `--add-data` patterns
+    are root-level globs (`*.html`, `words-*.txt`, `browser.py`, `icon.*`)
+    plus the named `backgrounds` directory; run them and 14 files match, none
+    under `.bughunt`. A root-level `*.html` cannot reach into a subdirectory.
+
+So the file is unreachable by every path that leaves this machine — and the
+sweep still reports it, because the claim a sweep makes is *"this repository
+is clean"* and it is not. That is the tool working. **The file is left where
+it is:** deleting another session's notes to turn a guard green is making the
+guard green rather than the tree clean, which is the move this report has
+spent all day arguing against. `rc=1` with a named, measured, non-escaping
+cause is worth more than a green nobody can explain.
+
+Noted for whoever owns `.bughunt/`: a gitignore says *"do not commit this"*,
+not *"this holds nothing of his"* — and a tar of a working tree, or a glob
+less careful than this one, does not read it at all.
+
+## W-B20 — `_boot.py` leaks a profile directory per run, into RAM
+
+Found while checking a peer's `/tmp` report, and the evidence was already
+written in this tree by whoever hit it the first time.
+
+`_boot.py:18` makes a scratch profile and never takes it away:
+
+    SCRATCH = Path(tempfile.mkdtemp(prefix="browsershot-"))
+
+No `atexit`, no `rmtree`, nothing. Its sibling `tests/harness.py:22` has
+`_tidy_scratch()` doing exactly that job for its own `browser-pwtest-` prefix,
+and its docstring describes the consequence in detail — *"every run left its
+directory behind, and a profile with a cache in it is 70-80 MB. After a few
+hundred runs /tmp was full."* **The fix is in the module next door and was
+never applied here.** Same shape as everything else today: the behaviour is
+written down, and the code beside it does something else.
+
+Measured rather than taken:
+
+    /tmp                          tmpfs, 7.6 G, 4.5 G used, 60%
+    browsershot-* directories     1348, of which 753 made today
+    their share                   2.0 G
+    newest two                    18:49 and 18:51 — this session's own runs
+
+`/tmp` is a tmpfs, so that 2.0 G is **RAM**, which puts it squarely in the
+brief this report's Section 12 work is for.
+
+**And it did not cause the segfault, which I want on the record because the
+docstring makes it tempting.** `_tidy_scratch` says a full `/tmp` shows up as
+*"the last few tests of a suite segfaulting and timing out"* — which is
+exactly `test_favorites`' exit 139. But there were **3.1 G free** at the time,
+so the mechanism was available and the condition was not met. `test_favorites`
+stays unexplained rather than being given a cause that fits the story.
+
+`_boot.py` is in `copy_files`, so this is upstream's to fix and the fix is
+`_tidy_scratch`'s shape with the other prefix. Not hand-edited here for the
+same reason as `test_toolbar` and `test_reading2`: a newer copy trips the
+drift check, and a green on this side would hide it upstream. Upstream's
+`origin/main` copy has no `atexit` or `rmtree` either.
+
+The 1348 directories are **not deleted**: `/tmp` is outside `~/claude`, and
+the rule for this machine is that files outside it are not touched without
+being asked. Reported, with the numbers, and it is already with him.
+
 ## The one guard that would have caught six of today's mistakes
 
 Not a bug in the browser. The most repeated mistake of the day was mine and
@@ -523,6 +599,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-B17 | The alt-drag link box took its **border** from the themed payload and filled with a hardcoded `rgba(137,180,250,0.12)` on the line below — mocha's accent at 12%. The outline moved with the theme and the fill did not, on **115 of 116**. `NAV_JS` is injected with `setSourceCode`, so nothing tints it; the colour has to be sent | Medium | **fixed** |
 | W-B18 | `MEDIA_TOOLS.wheelvolume` (volume readout) and `PAGE_TOOLS.edit` (edit badge) painted in `#000`/`#fff` — three-digit, which `_recolor` cannot match at all — and their dispatchers never tinted. Normalised and tinted in the same edit, in that order | Medium | **fixed** |
 | W-S02 | Five suites adopted from other editions were in **no** list in `win_port.json` — not `copy_files` (the port would raise), not `win_only` (they are not ours). A file in no list reads exactly like a file that is handled | Low | **fixed** |
+| W-B20 | `_boot.py:18` makes a scratch profile with `mkdtemp` and never removes it — no `atexit`, no `rmtree`. `tests/harness.py` has `_tidy_scratch()` doing exactly that for its own prefix, with a docstring describing this consequence. **1348 directories, 2.0 GB, and `/tmp` is a tmpfs, so that is RAM** | Medium | **OPEN — upstream** |
 | W-B19 | Two injected lines draw in `W.accent` while their dead fallback names a different token: the find-in-page hit marks on the scroll rail (`#f9e2af` = `yellow`) and the accessibility checker's **no alt text** outline (`#f38ba8` = `red`). Both render in the link/focus colour, so neither reads as what it is. The payloads send only `accent`/`bg`/`text`, so the fallback is the only record of the intent | Medium | **OPEN — needs the payload first** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
