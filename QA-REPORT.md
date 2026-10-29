@@ -260,6 +260,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-B04 | 17 UI strings the pages ask for and the table never had, including `micTestTitle` vs `mictestTitle` — one capital apart, so the browser *had* the string and the page could not find it. `translateLang` defaults to `de`, so the microphone page was English **for the default user** | Medium | fixed |
 | W-B05 | `settings.html:4510` calls `refreshSettings()`, which is defined in `start.html`. Seven Appearance buttons do their work and never refresh the page | Medium | **OPEN — upstream** |
 | W-B06 | `#11111b` on `mictest.html:25`, the mic meter track, is not in `THEME_SOURCE`, so it stays near-black on all 116 themes | Low | **OPEN — upstream** |
+| W-B07 | Settings → Performance offers *"Sleep background tabs before the machine swaps"* with the hint *"Reads the kernel's own memory-pressure figure (PSI)"*. Windows has no PSI and no `/proc`, so that half can never fire — the switch goes on and the timer runs for nothing | Medium | **OPEN — upstream** |
 
 **W-B05 detail**, because of how quiet it is: `bridge.appearanceAction` *exists*, so
 the theme really is saved, exported, starred or reset. Then the callback throws
@@ -282,6 +283,73 @@ through it. Present in all four editions at the same line.
 
 Each was made to fail on purpose before being trusted — the bug reintroduced in a
 `git archive` copy, never in the tree.
+
+## The suite measures itself wrongly — W-S01
+
+**This is the most consequential finding of the pass, and it is about the
+tests rather than the browser.**
+
+`tests/harness.py`:
+
+    QTimer.singleShot(5000, loop.quit)
+    loop.exec()
+    return box.get("v")
+
+`box.get("v")` returns `None` when the callback never fired — which is the
+same value a page returns when it genuinely answers `null`. A timeout and a
+real answer are indistinguishable, and 49 sites then coerce with
+`js(...) or 0`, turning "I do not know" into a confident zero.
+
+**Proof.** `test_perf2.py:286`, five runs in isolation on a quiet box:
+
+    run 1  ok    ...and the page is near where it was  <240>
+    run 2  ok    ...and the page is near where it was  <240>
+    run 3  FAIL  ...and the page is near where it was  <240>
+    run 4  ok    ...and the page is near where it was  <240>
+    run 5  ok    ...and the page is near where it was  <0>
+
+The assertion is `(js("window.scrollY|0", MAIN) or 0) >= 200` and the detail
+is a second, separate `js()` call. Run 3 **failed while its own evidence says
+240**, which is ≥ 200. Run 5 **passed while its own evidence says 0**, which is
+not. Two of five runs disagree with the number printed beside them, in
+opposite directions.
+
+Run 5 is the one that matters: a green check that proves nothing, which nobody
+will ever read.
+
+**Blast radius, counted:**
+
+| | |
+|---|---|
+| suites calling `js()` | 61 of 94 |
+| `js()` call sites in them | 1200 |
+| `check()` **verdicts** whose condition reads a `js()` value | **473** |
+| of those, coerced with `js(...) or X` | 49 |
+| suites defining their **own** `js()` with the same shape | 39 |
+
+Most exposed: `test_a11y` 34 verdicts, `test_callguard` 29, `test_pageguard` 25,
+`test_games` 23, `test_dev` 23 (16 coerced), `test_read3` 20.
+
+**Status** FAIL — **High**. **OPEN — upstream** (`tests/harness.py` is in the
+port set; a local fix is drift a port would overwrite).
+**Suggested fix** Raise rather than return. A timeout is not a value, and all
+473 verdicts are currently free to treat it as one:
+
+    loop.exec()
+    if "v" not in box:
+        raise AssertionError("js() timed out after 5s: %s" % code[:80])
+    return box["v"]
+
+A suite that dies saying "js timed out" is telling the truth. A suite that says
+"ok, scroll was 0" is not. The 39 private copies each need the same change, or
+better, to call the harness.
+
+**How far this goes, stated carefully.** This is very likely the explanation for
+the four full runs below producing four red sets with zero overlap — each run a
+different handful of those 473 verdicts lands on the wrong side, and 6 of the 8
+flaky suites call `js()`. But what is *proven* is that the mechanism exists and
+fires, not that it caused each specific red: `test_libs` and `test_permreload`
+call `js()` nowhere and have some other cause.
 
 ## Suite status
 
