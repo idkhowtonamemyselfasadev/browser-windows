@@ -574,7 +574,39 @@ over each one, three would be damaged:
                  rgb(255, 255, 255) -> rgb(27 28 37)
     NAV_JS     the full-screen backdrop behind an enlarged image
                  rgba(0,0,0,0.92) -> rgb(220 224 232 / 0.92)
-    THEME_JS   two #000000 -> #DCE0E8
+    THEME_JS   two #000000 -> #DCE0E8, and these are the worst of all
+
+`THEME_JS` is not a colour bug at all either — it is `_recolor`'s own twin,
+the same algorithm in JS with the same shadow rule and the same 0.8 alpha
+floor, and the two literals a tint rewrites are its two black branches:
+
+    for (var lit in t.map) {
+      hex[lit] = t.map[lit].toUpperCase();
+      if (lit !== "#000000")            <-- keeps pure black OUT of the
+        rgb[...] = t.map[lit];              rgb index, because rgb(0,0,0)
+    }                                       means shadow or scrim
+    ...
+      if (!(av >= 0.8)) return lit;
+      col = t.map["#000000"];           <-- "a near-opaque black IS the
+                                            window's background"
+
+`t.map` is keyed by the source literals — measured: 22 entries, `#000000`
+is a key and maps to `#dce0e8` on latte, and **`#DCE0E8` is not a key**.
+So a tint would put pure black *into* the rgb index and take latte's bg
+out of it, and turn the second lookup into `undefined`. Both of
+`_recolor`'s black rules break, in opposite directions, in the one place
+that implements them for our own pages. The mechanism eats itself.
+
+**And a third harm, in every blob: a tint rewrites the fallbacks.**
+
+    -   ";background:" + (W.accentSoft || "rgba(137,180,250,0.12)")
+    +   ";background:" + (W.accentSoft || "rgb(27 90 217 / 0.12)")
+    -   (W.bg || "#000000") + " !important; }");
+    +   (W.bg || "#DCE0E8") + " !important; }");
+
+Nine such lines in `A11Y_JS`, four in `NAV_JS`. A fallback is what runs
+when the payload does not arrive; freezing it to whichever theme was live
+at injection is precisely the bug the fallback exists to prevent.
 
 `A11Y_JS` is the worst of the three and it is not a colour at all: it is the
 contrast rescue, which measures a page's own luminance and picks black or
