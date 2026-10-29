@@ -494,8 +494,61 @@ untested assertion.
 
 ### Unsettled, for want of a Windows machine
 
-Two things in `browser.py` are written down here rather than guessed at, so
-that the next person does not read them and assume they were reasoned about:
+There is no Windows machine and no VM here, so some of this edition has been
+written, reviewed and tested on Linux and never once run on the platform it
+is for. Those parts are listed rather than quietly assumed, so that the next
+person does not read them and take them for things that were checked.
+
+Each one is an hour on any Windows box, and until someone has that hour the
+honest label is **unverified — never executed**.
+
+**The first launch.** None of this has painted a pixel on Windows:
+
+- **The dark title bar.** Windows draws the title bar, not Qt, and draws it
+  light unless told otherwise, so a dark theme used to come up under a white
+  bar. `restyle_window_frames()` now sets `QStyleHints.setColorScheme` and
+  then calls `DwmSetWindowAttribute` per window, trying attribute 20 and
+  then 19 (Windows 10 before build 19041 uses 19 and refuses the other
+  silently). On Linux every line of it returns at the first
+  `sys.platform != "win32"`, which is to say the suite passing here proves
+  only that it does nothing here.
+- **Whether the native dialogs follow.** `setColorScheme` is supposed to
+  carry the scheme into the file picker and the other dialogs Windows draws
+  for us. If it does not, those come up white against a dark browser and
+  need their own handling.
+- **DPI on a 4K laptop.** Qt 6.11's `highDpiScaleFactorRoundingPolicy` is
+  `PassThrough`, measured in this tree's own venv, so 125/150/175% should be
+  honoured fractionally rather than rounded. Measured, not seen.
+- **The font stack.** Every UI rule leads with *JetBrainsMono Nerd Font*,
+  which no Windows machine has, and falls back to Cascadia Mono then
+  Consolas. Which one actually gets used, and whether it looks right, is
+  unseen. One known rough edge: the font picker opens on the Nerd Font name
+  even where nothing can serve it.
+
+**The installer.** `BrowserSetup.exe` is built by CI and has never been run
+by anyone here:
+
+- **The SmartScreen path.** The README and the release notes describe the
+  blue page and the *More info → Run anyway* route from documentation, not
+  from having clicked it.
+- **The Start-menu entry, the uninstall row and the install path.** Written
+  to `packaging/installer.iss` from the Inno Setup docs. What Settings →
+  Apps actually shows is unseen.
+- **`MinVersion=10.0` and `ArchitecturesAllowed=x64compatible`.** Meant to
+  refuse an unsupported machine with a sentence instead of installing an app
+  that cannot start. Never refused anything yet.
+- **The trim.** CI prunes the debug `.pak` files and the unused locales out
+  of the bundle before Inno packs it. The 25-second smoke test runs after
+  the prune on purpose, so a prune that broke QtWebEngine would fail there —
+  but "it started" is not "it renders".
+- **The PowerShell.** There is no `pwsh` on this machine. Every line of
+  `.github/workflows/build-exe.yml` ships having been read and not run, and
+  on 2026-10-29 that cost a build: `$build:` parses as a scope-qualified
+  variable, so the whole script was a `ParserError` before its first
+  statement. `tests/test_workflow.py` now lints that file for the mistakes
+  that have actually been made in it, which is not the same as running it.
+
+**Two things in `browser.py`** that predate the above:
 
 - **Whether a CDM path with a space in it survives the flag.** The comment
   above `_find_widevine()` says Qt splits `QTWEBENGINE_CHROMIUM_FLAGS` on
@@ -513,9 +566,16 @@ that the next person does not read them and assume they were reasoned about:
 
 ## Uninstall
 
-Delete the *Browser* shortcut from your desktop and remove the folder you
-unzipped. Browsing data in `%LOCALAPPDATA%\browser\` can be removed
-separately.
+**If you used BrowserSetup.exe:** **Settings → Apps → Installed apps →
+Browser → Uninstall**. It removes the program, the Start-menu entry and the
+desktop shortcut.
+
+**If you ran it from source:** delete the *Browser* shortcut from your
+desktop and remove the folder you unzipped.
+
+Either way your browsing data stays in `%LOCALAPPDATA%\browser\` — nothing
+deletes it for you, and you can remove that folder separately whenever you
+want to.
 
 ## Licence
 
