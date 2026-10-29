@@ -563,6 +563,47 @@ reads exactly like a file that is handled.
     an entry with no reason              FAIL every entry says where it came from
     the same suite pending AND ported    FAIL nothing is both pending and ported
 
+**Why the injected scripts must never be tinted — measured, not assumed.**
+Section 7 of the guard fixes `NAV_JS` by putting the colour in the *payload*,
+not by tinting the blob, and that distinction turns out to be load-bearing.
+There are **20** injected blobs in this tree. Running `tint_js(…, "latte")`
+over each one, three would be damaged:
+
+    A11Y_JS    el.style.color = bg > 0.5 ? "#000000" : "#ffffff"
+                 #000000 -> #DCE0E8   #ffffff -> #1B1C25
+                 rgb(255, 255, 255) -> rgb(27 28 37)
+    NAV_JS     the full-screen backdrop behind an enlarged image
+                 rgba(0,0,0,0.92) -> rgb(220 224 232 / 0.92)
+    THEME_JS   two #000000 -> #DCE0E8
+
+`A11Y_JS` is the worst of the three and it is not a colour at all: it is the
+contrast rescue, which measures a page's own luminance and picks black or
+white ink. Tinted, it picks **latte's light grey for a light background** —
+it would invert the feature it implements. `NAV_JS`'s backdrop is the same
+class as the video letterboxes: `rgba(0,0,0,0.92)` is above `_recolor`'s 0.8
+alpha floor, so it reads as a paint and swaps, and a near-opaque light grey
+behind a photo on latte is the bug. Pinned here as must-NOT-change.
+
+This tree is correct today: **all nine `tint_js` call sites are tool-table
+dispatchers** and no injected blob is tinted. That is worth a check rather
+than a comment, because "nobody tints the blobs" is exactly the kind of fact
+that stays true until someone adds a tenth call site — offered upstream as:
+every `tint_js(` call site is a `*TOOLS*.get(name)` dispatcher, nothing else.
+
+**The no-mark margin case, which neither suite asserts.** `test_barmargins`
+is 26 green checks and every one of them has the badge present. The row that
+was broken for longest is the one with no mark at all:
+
+                              after show_address   after _sync_acct (before fix)
+    a look-alike domain       left=271 right=52    left=0   right=28
+    a plain http page         left= 95 right=52    left=0   right=28
+    an ordinary https page    left= 24 right=52    left=0   right=28
+
+Upstream's `place_bar_extras` reserves the lock *before* any mark is
+considered — `4 + 20 + 2`, minus 2, is the 24 measured here — so it is
+covered by construction. By construction is not by a check, and the third row
+is the one a regression would hit first.
+
 **Three things checked rather than taken.** All three arrived as a peer's
 summary and all three needed measuring here:
 
