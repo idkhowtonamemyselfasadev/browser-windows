@@ -275,6 +275,10 @@ a forgiving fallback returning a plausible wrong value.
 | W-B10 | **Neither of the address bar's two security marks has ever been shown.** `update_bar_marks` did `QUrl(str(url))`; `str()` of a QUrl is its Python repr, which parses to an empty everything. Every real navigation arrives as a QUrl, so host was always `""` — the look-alike badge *and* the plain-http **Not secure** badge were hidden on every page load. Every http page looked exactly like an https one | High | **fixed** |
 | W-B11 | The seventh tool dispatcher never tinted. Six call `tint_js`; `dev_tool` did not, and `DEV_TOOLS.update(DEV_TOOLS_PAGE)` makes it the **only** route to the five overlays that were normalised to tokens so they could be tinted — the ruler readout, hidden-field notes, perf box, key viewer, outline tints. Mocha over a latte window | Medium | **fixed** |
 | W-B12 | Three more tool tables paint and are never tinted — `PAGE_TOOLS` (back-to-top button, edit badge, visited-link recolour), `MEDIA_TOOLS` (volume OSD), `READER_TOOLS` (hint markers). Their literals are not tokens either, so tinting them is a no-op until someone decides which are the browser speaking | Low | **OPEN — needs a product call** |
+| W-B13 | **The badge W-B10 brought back was being painted over.** `_sync_acct` writes the bar's text margins from two guesses of its own, and `_url_changed` calls it the line *after* `show_address` — so every navigation threw away what `place_bar_extras` had just worked out. Measured: left 271 → 0 with the look-alike badge up, right 52 → 28 | High | **fixed** |
+| W-B14 | The account handle and the lock button were drawn on top of each other — `_place_acct` moves the handle to x=5, `place_bar_extras` puts the lock at x=4, both 20px wide. **19px of 20 overlapping**, and neither had any margin of its own | Medium | **fixed** |
+| W-B15 | The address bar showed a decoded homograph as the real domain — `https://аpple.com/` for `xn--pple-43d.com`. This is what made W-B09 more than cosmetic. mac's `idn_safe_to_show` existed and this tree did not have it | High | **fixed** |
+| W-B16 | `test_reading2.py` asserts the literal `cba6f7` as the syntax highlighter's keyword colour. The off-palette work moved it off that off-palette purple onto `accentLt` (`#b4d0fb`), so the check fails. **Upstream shipped this red** — linux's `99d6deb` and their copy of the suite still has the old literal | Low | **OPEN — upstream, and red here** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -440,6 +444,98 @@ added to `PAGE_TOOLS`, `MEDIA_TOOLS` or `READER_TOOLS` tomorrow is invisible to
 the guard that exists for exactly that. Same shape as `test_contrast.py`'s
 `sheets()` listing six of nine pages. Reported upstream.
 
+**W-B13 / W-B14 detail — the fix I shipped was being painted over.** The
+previous commit brought both bar marks back and I checked they appeared. I did
+not check that anything could be *read*. Two writers of the same property:
+
+    place_bar_extras   computes the margin from the lock, both marks and the
+                       four right-hand buttons that are actually showing
+    _sync_acct         writes 24-or-0 on the left from the account handle
+                       alone, and 28-or-0 on the right from the star
+
+`_url_changed` calls `show_address` (which reaches `place_bar_extras`) and then
+`_sync_acct` three lines later, so `_sync_acct` always won. Driven, three URL
+kinds, the real methods:
+
+                              after show_address   after _sync_acct
+    a look-alike domain       left=271 right=52    left=0   right=28
+    a plain http page         left= 95 right=52    left=0   right=28
+    an ordinary https page    left= 24 right=52    left=0   right=28
+
+The badge is 243px wide and starts at x=26. With left=0 the address is drawn
+from the very start of the bar, straight across the badge and the lock button.
+The https row is the one worth noticing: **even with no mark at all**, the 24px
+that reserves the lock button went to 0, so the address has been painted over
+the lock on every ordinary page, which long predates anything today.
+
+And in measuring that I found W-B14: `_place_acct` moves the handle to x=5 and
+`place_bar_extras` puts the lock at x=4, both 20px wide.
+
+    lock         visible=True  x=4   w=20   spans  4..24
+    acct handle  visible=True  x=5   w=20   spans  5..25
+    overlap      YES, 19 px
+
+After: lock 4..24, handle 26..46, margin 46, overlap none — and the margins
+survive `_sync_acct` and the full `_url_changed` (271 stays 271, 95 stays 95,
+24 stays 24, right stays 52). `place_bar_extras` owns both margins now and
+`_sync_acct` asks it, falling back only before the extras exist.
+`test_barmargins.py` adopted from linux: **26 checks, all ok**.
+
+**W-B15 detail.** `test_barmargins` arrived with one failure this tree earned
+on its own: *"the bar shows the punycode, not the look-alike"* — it showed
+`https://аpple.com/`. The badge warned and the text still read as Apple. mac
+wrote `idn_safe_to_show` for exactly this and three trees had it; mine did not,
+which is the thing that made W-B09 more than a dead branch. Ported with its
+suite (`test_idn.py`, 0 failed) and the check now reads
+`<https://xn--pple-43d.com/>`.
+
+**W-B16, and upstream shipped it red.** `test_reading2.py` asserts the literal
+`cba6f7` as the syntax highlighter's keyword colour:
+
+    FAIL the keyword is coloured, not the whole block
+         <<span style="color:#b4d0fb">def</span> …>
+
+`#cba6f7` is **off-palette** — it is the colour picker's "Purple" and the
+default `privateTint`, exempted by name in the guard — so the off-palette work
+moved the keyword onto `accentLt`, `#b4d0fb`, which is right. The suite was not
+updated with it. `grep -n cba6f7` in linux's own `test_reading2.py` still finds
+line 240, and `99d6deb`'s message says *"test_themetokens and test_downloaddir
+still exit 0"* — those two were run, this one was not. So the red is upstream's
+and mine is honest: `test_reading2.py` is in `copy_files`, so hand-editing it
+here would make the next port raise, and a green on my side would hide their
+red. Reported, left red, cause recorded.
+
+The fix, when upstream takes it, should not be the new literal: a check named
+*"the keyword is coloured, not the whole block"* that asserts a hardcoded
+theme hex is the same class of bug the guard was written for.
+
+**Three things checked rather than taken.** All three arrived as a peer's
+summary and all three needed measuring here:
+
+  - **`PAGE_TOOLS.totop` must NOT be normalised.** Its fill is
+    `rgba(20,20,20,.75)`; alpha under 0.8, so `_recolor` leaves it as a scrim
+    — verified, `tint_js(…, "latte")` returns it unchanged. So only the ink
+    could move, and over that unmoved scrim any text-ish token fails 4.5:1 on
+    **30 of 116** themes. One correction to the number I was given: 28 of the
+    30 are the light group, the other two are `character` —  `sepia` at
+    **1.13:1** and `newspaper` at 1.91:1, both worse than any light theme. As
+    it ships, `#fff` on that scrim is 9.30:1 on latte and 19.17:1 on mocha.
+    Normalising the ink alone makes it worse than leaving it.
+  - **The uppercase trap is real and this tree is clean.** `_COLOR_RE` has no
+    `re.I`, so a capital literal can never be swapped: injecting `#0D0D12`
+    into `READ_TOOLS.selbar` survives `tint_js(…, "latte")` where latte's
+    surface is `#eff1f5`. Swept all ten tables and every generated page:
+    **zero** uppercase literals. A trap, not a live bug — worth a guard, not a
+    fix.
+  - **android's localisation bug is not here.** AST-scanned every
+    `_ui_str(...) % ...` for an English string literal in the argument:
+    **0 sites**. Proven to bite first — injecting android's exact shape,
+    `% ((what or host) + " (mixed letters)")`, reports
+    `browser.py:40526 key=barLookalikeTip arg='(mixed letters)'`. The reason
+    this tree is clean is visible at `browser.py:40524`:
+    `kind, _colon, what = warning.partition(":")` keeps only `what`, the host,
+    and throws the English `kind` away.
+
 **W-B12 detail, and why it is open rather than fixed.** The other three untinted
 dispatchers hold colours that are not tokens, so routing them through `tint_js`
 changes nothing today — a call that looks like coverage and does nothing is the
@@ -507,6 +603,8 @@ through it. Present in all four editions at the same line.
 | `test_downloaddir.py` | does `create=True` create the **default** too, and `create=False` still create nothing? (ported) |
 | `test_offpalette.py` | does every colour the browser PAINTS come out of the theme, and does the code that RUNS a snippet tint it? the inverse of test_themetokens (ported; 18 checks) |
 | `test_barmarks.py` | does the bar's security mark fire for a QUrl as well as a string, and is `QUrl(str(…))` gone? (ported) |
+| `test_barmargins.py` | does the margin that reserves room for a mark survive the rest of a navigation? drives the real widget (ported; 26 checks) |
+| `test_idn.py` | is a mixed-script host shown as punycode rather than in its own letters? (ported) |
 
 Each was made to fail on purpose before being trusted — the bug reintroduced in a
 `git archive` copy, never in the tree.
@@ -580,7 +678,7 @@ call `js()` nowhere and have some other cause.
 
 ## Suite status
 
-99 suites (96 plus `test_downloaddir`, `test_offpalette`, `test_barmarks`). Four full runs today, and the red set had **zero overlap** between any
+101 suites (96 plus `test_downloaddir`, `test_offpalette`, `test_barmarks`, `test_barmargins`, `test_idn`). Four full runs today, and the red set had **zero overlap** between any
 two of them:
 
     run 1   test_dev, test_themefix                        both pass alone

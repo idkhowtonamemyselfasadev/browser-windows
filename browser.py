@@ -1954,14 +1954,25 @@ def pretty_url(text, hide_scheme=False, decode=True):
         if url.isValid() and url.host():
             shown = url.toString(QUrl.ComponentFormattingOption
                                  .DecodeReserved)
-            # the host in its own letters: QUrl keeps punycode in
-            # toString, and the point of showing it decoded is that
-            # xn--pple-43d.com is not apple.com
+            # The host in letters a person can check -- which is
+            # NOT always its own letters.
+            #
+            # What was here before: a branch that decoded the host if
+            # it started with "xn--", with a comment saying QUrl keeps
+            # punycode in toString. Both halves were wrong. QUrl.host()
+            # has already decoded the IDN, so the test never once
+            # matched and the branch never ran; and the reasoning was
+            # backwards -- decoded, xn--pple-43d.com reads AS
+            # apple.com. Punycode is not the problem it was guarding
+            # against, punycode is the warning. Qt had been decoding
+            # the whole time and nothing was deciding whether it
+            # should.
             host = url.host()
-            if host.startswith("xn--") or ".xn--" in host:
-                pretty_host = url.host(QUrl.ComponentFormattingOption
-                                       .FullyDecoded)
-                shown = shown.replace(host, pretty_host, 1)
+            if host and not idn_safe_to_show(host):
+                shown = shown.replace(
+                    host,
+                    url.host(QUrl.ComponentFormattingOption
+                             .EncodeUnicode), 1)
             out = shown
         else:
             out = QUrl.fromPercentEncoding(text.encode())
@@ -1970,6 +1981,73 @@ def pretty_url(text, hide_scheme=False, decode=True):
         out = re.sub(r"^(https?://)?www\.", lambda m: m.group(1) or "",
                      out)
     return out
+
+
+#: Scripts a label may be written in. Anything outside this set is
+#: left alone: the point is to catch a name pretending to be Latin,
+#: not to have an opinion about writing systems the browser has never
+#: been asked about.
+KNOWN_SCRIPTS = ("LATIN", "CYRILLIC", "GREEK", "ARMENIAN", "HEBREW",
+                 "ARABIC")
+
+
+def idn_safe_to_show(host):
+    """Whether this host may be shown in its own letters.
+
+    The address bar is the only place a person can check who they are
+    actually talking to, so it is the one piece of chrome where
+    "looks right" IS the attack:
+
+        xn--pypal-4ve.com   decodes to   pаypal.com   (Cyrillic a)
+        xn--pple-43d.com    decodes to   аpple.com
+        xn--gogle-3nd.com   decodes to   g̵ogle.com  (a stroked g)
+
+    No font and no reader tells those from the real thing. Punycode is
+    ugly and unreadable and that is exactly its value here: it is the
+    form that cannot lie.
+
+    So, per label, and conservative in both directions because a rule
+    that breaks real names gets switched off:
+
+      more than one script in one label  ->  not safe.  pаypal is
+          Latin and Cyrillic at once, and no real name is.
+      a combining mark on a Latin label  ->  not safe.  Latin IDNs
+          arrive precomposed -- the u-umlaut in muenchen is one
+          character, category Ll -- so a Latin label carrying a
+          separate combining mark is doing something a real one does
+          not. Scripts that genuinely compose, like Arabic or
+          Devanagari, are not Latin and are not touched by this.
+      anything else                      ->  safe, show the letters.
+
+    münchen.de, bücher.de, the Chinese and the Russian names all stay
+    readable. What is NOT caught, and is pinned rather than pretended
+    about: a label confusable while being entirely ONE script --
+    xn--80ak6aa92e.com is five Cyrillic letters reading "apple" and
+    mixes nothing. Deciding that needs to know which alphabets the
+    person actually reads, which is a policy for four editions to
+    agree, not a default to invent inside one function. See
+    test_idn.py.
+    """
+    for label in str(host or "").strip(".").split("."):
+        scripts = set()
+        combining = False
+        for letter in label:
+            if letter.isdigit() or letter in "-_":
+                continue
+            if unicodedata.category(letter) == "Mn":
+                combining = True
+                continue
+            try:
+                name = unicodedata.name(letter).split()[0]
+            except ValueError:
+                continue
+            if name in KNOWN_SCRIPTS:
+                scripts.add(name)
+        if len(scripts) > 1:
+            return False
+        if combining and scripts <= {"LATIN"}:
+            return False
+    return True
 
 
 def as_qurl(url):
@@ -41079,6 +41157,15 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
             left += lock.width() + 2
         elif lock is not None:
             lock.hide()
+        # The account handle was never in this sum. _place_acct put it
+        # at x=5 and the lock sits at x=4, both 20px wide, so on a site
+        # with more than one saved login the two were drawn on top of
+        # each other -- measured here, 19px of 20 -- and neither got any
+        # margin of its own.
+        acct = getattr(self, "acctbtn", None)
+        if acct is not None and acct.isVisible():
+            acct.move(left, max(0, (height - acct.height()) // 2))
+            left += acct.width() + 2
         for name in ("_securelbl", "_uselbl"):
             label = getattr(self, name, None)
             if label is None or not label.isVisible():
@@ -47360,11 +47447,24 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         if on:
             btn.setToolTip(self._ui_str("acctPickTip"))
         btn.setVisible(on)
-        star = getattr(self, "starbtn", None)
-        right = 28 if (star is not None and not star.isHidden()) else 0
-        self.urlbar.setTextMargins(24 if on else 0, 0, right, 0)
-        if on:
-            self._place_acct()
+        # The margins are not this function's to write. It used to set
+        # them from two guesses of its own -- 24px of left if the handle
+        # was up, and a right of 28 if the star was -- and _url_changed
+        # asks it on the line AFTER show_address. So every navigation
+        # threw away what place_bar_extras had just worked out. Measured
+        # in this tree, driven through the real methods: with the
+        # look-alike badge showing, 271px of left margin went back to 0
+        # and the address painted straight over the badge and the lock,
+        # and the right went 52 -> 28, so the text ran under the copy
+        # button. The badge the previous commit brought back was being
+        # painted on. place_bar_extras is the one place that knows the
+        # lock, the handle, both marks and the four buttons on the
+        # right, so it owns both margins and this asks it instead.
+        if not self.place_bar_extras():
+            # before the extras exist there is nothing to measure
+            self.urlbar.setTextMargins(24 if on else 0, 0, 28, 0)
+            if on:
+                self._place_acct()
 
     def open_account_chooser(self):
         """Ctrl+Shift+M, or the handle in the address bar.
