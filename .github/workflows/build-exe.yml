@@ -70,15 +70,6 @@ jobs:
           --add-data "words-*.txt;." --add-data "backgrounds;backgrounds"
           --add-data "browser.py;."
 
-      - name: Smoke test (exe must stay up for 25 s)
-        shell: pwsh
-        run: |
-          $p = Start-Process dist\Browser\Browser.exe -PassThru
-          Start-Sleep 25
-          if ($p.HasExited) { Write-Error "Browser.exe exited early with code $($p.ExitCode)"; exit 1 }
-          Stop-Process -Id $p.Id -Force
-          Get-Process QtWebEngineProcess -ErrorAction SilentlyContinue | Stop-Process -Force
-
       - name: Trim the bundle
         shell: pwsh
         run: |
@@ -157,6 +148,19 @@ jobs:
           }
           Write-Host "the files QtWebEngine needs are all still there"
 
+      - name: Smoke test (exe must stay up for 25 s)
+        shell: pwsh
+        run: |
+          # After the trim, deliberately: this has to start the
+          # bundle that actually ships. Run before it and a prune
+          # that broke QtWebEngine would sail past a green smoke
+          # test into the installer.
+          $p = Start-Process dist\Browser\Browser.exe -PassThru
+          Start-Sleep 25
+          if ($p.HasExited) { Write-Error "Browser.exe exited early with code $($p.ExitCode)"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          Get-Process QtWebEngineProcess -ErrorAction SilentlyContinue | Stop-Process -Force
+
       - name: Build installer
         shell: pwsh
         run: |
@@ -169,21 +173,26 @@ jobs:
           # an unknown value and ISCC stops -- so check the version here
           # and say which directive is the reason, rather than leaving a
           # future reader to decode "Unsupported architecture".
-          $v = [version](Get-Item $iscc).VersionInfo.FileVersion
-          Write-Host "Inno Setup $v at $iscc"
-          if ($v -lt [version]"6.3") {
-            Write-Host "Inno Setup $v is older than 6.3; upgrading for x64compatible support"
+          # A FileVersion that will not parse must not become a build
+          # failure of its own -- the point of reading it is to explain
+          # an ISCC error, not to invent one.
+          $v = $null
+          try { $v = [version](Get-Item $iscc).VersionInfo.FileVersion } catch { }
+          Write-Host "Inno Setup $(if ($v) { $v } else { 'version unreadable' }) at $iscc"
+          if ($v -and $v -lt [version]"6.3") {
+            Write-Host "older than 6.3; upgrading for x64compatible support"
             choco upgrade innosetup -y --no-progress
-            $v = [version](Get-Item $iscc).VersionInfo.FileVersion
+            try { $v = [version](Get-Item $iscc).VersionInfo.FileVersion } catch { }
             Write-Host "Inno Setup is now $v"
-          }
-          if ($v -lt [version]"6.3") {
-            Write-Error "Inno Setup $v cannot build this script: ArchitecturesAllowed=x64compatible needs 6.3 or later"
-            exit 1
           }
 
           & $iscc "/DAppVersion=$env:VER" packaging\installer.iss
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE) {
+            if ($v -and $v -lt [version]"6.3") {
+              Write-Host "note: this Inno Setup is $v, and installer.iss uses ArchitecturesAllowed=x64compatible, which needs 6.3 or later"
+            }
+            exit $LASTEXITCODE
+          }
           if (-not (Test-Path "dist\BrowserSetup.exe")) { Write-Error "ISCC reported success but dist\BrowserSetup.exe is not there"; exit 1 }
           $mb = (Get-Item "dist\BrowserSetup.exe").Length / 1MB
           Write-Host ("BrowserSetup.exe is {0:N1} MB" -f $mb)
