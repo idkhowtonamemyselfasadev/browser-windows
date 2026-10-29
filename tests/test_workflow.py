@@ -264,6 +264,29 @@ for needed in ("packaging/installer.iss", ".github/workflows/build-exe.yml",
                "VERSION", "tests/test_workflow.py"):
     check("...including %s" % needed, needed in only)
 
+# ...and the question none of the three lists was ever asked: is every
+# suite on disk in one of them? A file in NO list reads exactly like a
+# file that is handled -- it is not clobbered, because nothing knows
+# about it, and it is not reconciled either. Five adopted suites had
+# piled up that way before anyone looked.
+pending = man["adopted_pending"]
+suites = sorted(str(q.relative_to(HERE.parent))
+                for q in list(HERE.parent.glob("test_*.py"))
+                + list((HERE.parent / "tests").glob("test_*.py")))
+accounted = set(only) | in_port | set(pending)
+loose = [q for q in suites if q not in accounted]
+check("every suite on disk is in one of the file lists", not loose, loose)
+
+# both directions, so a pending entry cannot go stale: either it landed
+# upstream and belongs in copy_files now, or it was deleted here.
+stale = [q for q in pending if not (HERE.parent / q).exists()]
+check("...and adopted_pending names nothing that is gone", not stale, stale)
+claimed = sorted(set(pending) & in_port)
+check("...and nothing is both pending and ported", not claimed, claimed)
+check("every adopted_pending entry says where it came from",
+      all(str(why).strip() for why in pending.values()),
+      [q for q, why in pending.items() if not str(why).strip()])
+
 print()
 if fails:
     print("FAILED (%d): %s" % (len(fails), "; ".join(fails[:6])))

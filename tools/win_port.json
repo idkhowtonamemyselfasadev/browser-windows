@@ -882,5 +882,27 @@
     "_setshots.py": "developer harness, not shipped",
     "_wizshot.py": "developer harness, not shipped",
     ".gitignore": "nearly the same file, but the Linux one ignores web_engine.so, the compiled artifact of the engine pane, which does not exist here"
+  },
+  "_adopted_pending_readme": [
+    "Suites adopted whole from another edition that CANNOT be listed in",
+    "copy_files yet: win_port.py raises PortError on a copy_files name",
+    "that is missing from the linux repo, and none of these exists in",
+    "~/browser. They are not win_only either -- they are not ours, and",
+    "claiming them would stop the port ever reconciling them. So they",
+    "sit here, named, until they land upstream; then they move to",
+    "copy_files and this list shrinks.",
+    "",
+    "Written because five of them had piled up invisibly. Nothing read",
+    "the file lists for completeness, so a suite in NO list looked",
+    "exactly like a suite that was handled -- the same disease as an",
+    "exemption that reads like a fix. tests/test_workflow.py checks",
+    "this list both ways now."
+  ],
+  "adopted_pending": {
+    "test_downloaddir.py": "linux; create=True has to make the default folder too",
+    "test_offpalette.py": "linux; every colour the browser paints comes from the theme",
+    "test_barmarks.py": "linux; the bar's security marks fire for a QUrl too",
+    "test_barmargins.py": "linux; the margin reserving room for a mark survives",
+    "test_idn.py": "linux; a mixed-script host is shown as punycode"
   }
 }

@@ -279,6 +279,9 @@ a forgiving fallback returning a plausible wrong value.
 | W-B14 | The account handle and the lock button were drawn on top of each other — `_place_acct` moves the handle to x=5, `place_bar_extras` puts the lock at x=4, both 20px wide. **19px of 20 overlapping**, and neither had any margin of its own | Medium | **fixed** |
 | W-B15 | The address bar showed a decoded homograph as the real domain — `https://аpple.com/` for `xn--pple-43d.com`. This is what made W-B09 more than cosmetic. mac's `idn_safe_to_show` existed and this tree did not have it | High | **fixed** |
 | W-B16 | `test_reading2.py` asserts the literal `cba6f7` as the syntax highlighter's keyword colour. The off-palette work moved it off that off-palette purple onto `accentLt` (`#b4d0fb`), so the check fails. **Upstream shipped this red** — linux's `99d6deb` and their copy of the suite still has the old literal | Low | **OPEN — upstream, and red here** |
+| W-B17 | The alt-drag link box took its **border** from the themed payload and filled with a hardcoded `rgba(137,180,250,0.12)` on the line below — mocha's accent at 12%. The outline moved with the theme and the fill did not, on **115 of 116**. `NAV_JS` is injected with `setSourceCode`, so nothing tints it; the colour has to be sent | Medium | **fixed** |
+| W-B18 | `MEDIA_TOOLS.wheelvolume` (volume readout) and `PAGE_TOOLS.edit` (edit badge) painted in `#000`/`#fff` — three-digit, which `_recolor` cannot match at all — and their dispatchers never tinted. Normalised and tinted in the same edit, in that order | Medium | **fixed** |
+| W-S02 | Five suites adopted from other editions were in **no** list in `win_port.json` — not `copy_files` (the port would raise), not `win_only` (they are not ours). A file in no list reads exactly like a file that is handled | Low | **fixed** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -509,6 +512,57 @@ The fix, when upstream takes it, should not be the new literal: a check named
 *"the keyword is coloured, not the whole block"* that asserts a hardcoded
 theme hex is the same class of bug the guard was written for.
 
+**W-B17 / W-B18 detail, and the thing that made them takeable.** Adopting
+linux's `test_offpalette.py` again — it went 18 checks to **35** — found four
+failures on this tree, all real:
+
+    no three-digit colour, which _recolor cannot swap
+    every short literal left in a snippet has a written reason
+    every colour is a payload fallback or a named exception
+    the snippet reads it from the payload now
+
+The first two are `#000`/`#fff` in `MEDIA_TOOLS.wheelvolume` and
+`PAGE_TOOLS.edit`. Three-digit is the worse spelling: `_recolor`'s regex is
+six-digit, so those could never be swapped even once a dispatcher tinted them.
+The last two are the alt-drag link box: `border:1px solid (W.accent || …)` on
+one line, `background:rgba(137,180,250,0.12)` on the next. Measured here —
+**exactly one of 116** themes has `#89b4fa` as its accent, so the fill was
+wrong on 115. `NAV_JS` is injected with `setSourceCode` and nothing tints it,
+so the colour has to be sent: `nav_payload` carries `accentSoft` now and the
+snippet reads it, byte-identical on mocha.
+
+I had told the crew I was holding these back until upstream committed them,
+because normalising a literal is a product decision and nobody had measured
+it. The suite is what changed that: it measures both, and prints the number —
+`MEDIA_TOOLS.wheelvolume reads on every theme  <worst 10.59:1 of 116>`. With
+the contrast proven on all 116 the decision is no longer a guess, and holding
+back would have left this tree failing its own guard for no reason.
+
+Order mattered and the suite enforces it: normalise the literals *and* tint
+the dispatcher in one edit. Tint first and it is `dev_tool` again — a call
+that goes green and changes no pixel. Normalise first and check (6) flips the
+table from *"cold, nothing to swap"* to a failure, which is what it did.
+
+`READER_TOOLS` is still deliberately cold and still Tim's: the suite now
+carries the three pen literals in a `PENDING_AT` list that fails if an entry
+stops matching anything, so an undecided item cannot quietly become invisible
+the way an exemption can.
+
+**W-S02 — the same disease in my own manifest.** Five suites adopted today sat
+in **no** list in `win_port.json`. Not `copy_files`, because `win_port.py`
+raises on a name missing from `~/browser`; not `win_only_files`, because they
+are not ours and claiming them would stop the port ever reconciling them. So
+nothing clobbered them and nothing reconciled them either — a file in no list
+reads exactly like a file that is handled.
+
+`adopted_pending` names all five with where each came from, and
+`tests/test_workflow.py` checks it four ways. Each proven by one mutation:
+
+    dropped test_idn.py from the list    FAIL every suite on disk is in a list
+    an entry naming a file that is gone  FAIL names nothing that is gone
+    an entry with no reason              FAIL every entry says where it came from
+    the same suite pending AND ported    FAIL nothing is both pending and ported
+
 **Three things checked rather than taken.** All three arrived as a peer's
 summary and all three needed measuring here:
 
@@ -605,6 +659,7 @@ through it. Present in all four editions at the same line.
 | `test_barmarks.py` | does the bar's security mark fire for a QUrl as well as a string, and is `QUrl(str(…))` gone? (ported) |
 | `test_barmargins.py` | does the margin that reserves room for a mark survive the rest of a navigation? drives the real widget (ported; 26 checks) |
 | `test_idn.py` | is a mixed-script host shown as punycode rather than in its own letters? (ported) |
+| `tests/test_workflow.py` | ...and every suite on disk is in exactly one of the port's file lists, both directions |
 
 Each was made to fail on purpose before being trusted — the bug reintroduced in a
 `git archive` copy, never in the tree.
@@ -678,7 +733,7 @@ call `js()` nowhere and have some other cause.
 
 ## Suite status
 
-101 suites (96 plus `test_downloaddir`, `test_offpalette`, `test_barmarks`, `test_barmargins`, `test_idn`). Four full runs today, and the red set had **zero overlap** between any
+101 suites. Four full runs earlier today, and the red set had **zero overlap** between any
 two of them:
 
     run 1   test_dev, test_themefix                        both pass alone
