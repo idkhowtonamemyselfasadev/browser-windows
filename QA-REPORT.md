@@ -391,9 +391,37 @@ cost, not accumulation. 0.8 MB over 30 tabs opened and closed is 27 KB a tab —
 caches and allocator arenas, not tabs that were never let go.
 
 So the 46.8 MB the earlier sleeping-50-tabs run could not explain is the same
-one-time cost, and **sleeping is not hiding a leak**. Limit of the claim,
-stated: two cycles separates "+34 then +0.8" from "+34 then +34". It does not
-prove 0.8 never adds up — a hundred cycles would be 80 MB.
+one-time cost, and **sleeping is not hiding a leak**.
+
+**A third cycle, run because two cannot rule out a slow climb, and because
+linux asked to be told if it kept going.** It does not — the increment decays:
+
+    A baseline              main=168.5
+    C all closed (cycle 1)  main=201.2   +32.7 from baseline
+    C all closed (cycle 2)  main=202.0   +0.8
+    C all closed (cycle 3)  main=202.3   +0.3
+
++32.7, +0.8, +0.3. Converging, not linear; a leak is flat or growing per
+cycle, and this halves. It is also an independent reproduction of the whole
+experiment off a different baseline (168.5 against 163.9), and the two agree:
++32.7 against +33.9 for the first cycle and +0.8 against +0.8 for the second.
+Same shape as linux's own reading on 20 tabs, +16.8 / +0.6 / +0.1.
+
+**But something else is linear, and it is not the process I was watching.**
+The three surviving helper processes grow every cycle:
+
+    helpers after cycle 1   135.1
+    helpers after cycle 2   137.8   +2.7
+    helpers after cycle 3   140.6   +2.8
+
+`nhelpers` is back to 3 each time, so this is not processes left behind — it
+is the three permanent ones (GPU, utility, zygote) holding ~2.7 MB more after
+each round of thirty. Flat increments, where the main process's decayed. Three
+points is thin and those processes legitimately cache, so this is **not filed
+as a leak**: it is the one number in the experiment that does not look like it
+converges, 2.7 MB per thirty tabs opened and closed is 90 KB a tab, and at a
+hundred rounds it would be 270 MB. The test is more rounds, which is cheap and
+is the obvious next measurement rather than a conclusion.
 
 ### The pane cache: 21 MB and one renderer each, and nothing is given back
 
@@ -408,6 +436,9 @@ go through `_build_panel`, the side panel, which is why only five were ever in
     after downloads, dismissed    total=435.2  main=230.5  nhelpers=6  cached=3   +23.0
     after bookmarks, dismissed    total=459.6  main=242.6  nhelpers=7  cached=4   +24.4
     after passwords, dismissed    total=475.9  main=249.6  nhelpers=8  cached=5   +16.3
+
+Reproduced: a second run of the seven-opener form gave total 511.4 against
+510.5, 10 helper processes both times, the same five cached.
 
 **+135.0 MB for the five, one extra renderer per pane, monotonic, and none of
 it released when the pane is dismissed.** `settings` costs 51.5 MB on its own,
