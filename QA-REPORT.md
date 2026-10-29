@@ -604,6 +604,29 @@ check worth keeping is the one that catches the disagreement rather than the
 style: *every `(W.x || "literal")` whose literal is a token's value must have
 `x` equal to that token's name.*
 
+Two refinements that came out of running it, and both argue for the human:
+
+**`(W.text || "#fff")` is better left alone than filed.** On mocha `bright`
+is `#ffffff` and `text` is `#cdd6f4`; on latte `bright` is **`#1b1c25`** — it
+inverts. So "pure white as a fallback for text" would be wrong on every light
+theme *if it ever ran*. Real ambiguity, zero consequence: exactly the
+combination that should not become a ticket.
+
+**And the check can pass while the payload disagrees with both.** Of the
+three payload builders, one sends a different token than its key says:
+
+    browser.py:55783  nav_payload         "bg": palette['crust']
+    browser.py:57231  a11y_payload        "bg": palette['bg']
+    browser.py:58174  page_look_payload   "bg": palette['bg']
+
+So `W.bg` carries `crust` in `NAV_JS` and `bg` in `A11Y_JS` — the same name,
+two colours, one builder out of three disagreeing with its siblings. On latte
+that is `#e5e8ee` against `#dce0e8`, adjacent lights, invisible. Not filed:
+the consequence is nil and picking which of the two is "right" is a decision
+about what `W.bg` is supposed to mean. Recorded because it is the cleanest
+demonstration that the literal-matches-key test can be green while the colour
+behind it is a different token entirely.
+
 **Why the injected scripts must never be tinted — measured, not assumed.**
 Section 7 of the guard fixes `NAV_JS` by putting the colour in the *payload*,
 not by tinting the blob, and that distinction turns out to be load-bearing.
