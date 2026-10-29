@@ -365,6 +365,74 @@ pages came through `pages.py port` and the base is a pre-rewrite twin 83
 commits behind `origin/main`, so a port run today would refuse regardless of
 anything here. `win_port.py --check` already says which commit to repoint at.
 
+## Section 12, the two questions that were still open — answered
+
+Both were queued this morning as *specified, scripted and unanswered*. His
+brief for this is numbers, not adjectives, so these are deltas off each run's
+own baseline — the two runs booted differently (3 helper processes at one
+baseline, 8 at the other) and mixing their absolutes would be meaningless.
+
+### Closing tabs: not a leak
+
+30 tabs opened and closed, twice, because one cycle cannot tell a warm-up cost
+from accumulation:
+
+    A baseline              main=163.9  helpers=127.7  nhelpers=3   total=291.6
+    B 30 open   (cycle 1)   main=187.3  helpers=452.5  nhelpers=33  total=639.8
+    C all closed (cycle 1)  main=197.8  helpers=130.6  nhelpers=3   total=328.4
+    B 30 open   (cycle 2)   main=188.0  helpers=456.0  nhelpers=33  total=644.0
+    C all closed (cycle 2)  main=198.6  helpers=133.9  nhelpers=3   total=332.4
+
+**The renderers come back whole** — 452.5 → 130.6 MB and 33 helper processes
+→ 3, twice over. The main process does not return to baseline: **+33.9 MB**
+after the first cycle. But the second identical cycle adds **+0.8 MB**, not
+another 34. That is the distinction this test existed to make: a one-time
+cost, not accumulation. 0.8 MB over 30 tabs opened and closed is 27 KB a tab —
+caches and allocator arenas, not tabs that were never let go.
+
+So the 46.8 MB the earlier sleeping-50-tabs run could not explain is the same
+one-time cost, and **sleeping is not hiding a leak**. Limit of the claim,
+stated: two cycles separates "+34 then +0.8" from "+34 then +34". It does not
+prove 0.8 never adds up — a hundred cycles would be 80 MB.
+
+### The pane cache: 21 MB and one renderer each, and nothing is given back
+
+The first run measured seven openers together at +178 MB, and I nearly divided
+by seven. **Two of the seven are not panes**: `open_notes` and `open_player`
+go through `_build_panel`, the side panel, which is why only five were ever in
+`_panes`. Measured again, one at a time:
+
+    A baseline                    total=340.9  main=205.9  nhelpers=3  cached=0
+    after settings, dismissed     total=392.4  main=214.8  nhelpers=4  cached=1   +51.5
+    after history, dismissed      total=412.2  main=220.1  nhelpers=5  cached=2   +19.8
+    after downloads, dismissed    total=435.2  main=230.5  nhelpers=6  cached=3   +23.0
+    after bookmarks, dismissed    total=459.6  main=242.6  nhelpers=7  cached=4   +24.4
+    after passwords, dismissed    total=475.9  main=249.6  nhelpers=8  cached=5   +16.3
+
+**+135.0 MB for the five, one extra renderer per pane, monotonic, and none of
+it released when the pane is dismissed.** `settings` costs 51.5 MB on its own,
+roughly double the others — it is by far the biggest page. The remaining ~43
+MB of the seven-opener figure is `notes` and `player` in the panel, which
+reconciles the two runs.
+
+**This is the trade the brief names, and both sides are real.** A pane that
+opens instantly, against 135 MB and five renderers held for pages nobody is
+looking at. It is not a bug: `_panes[name]` is built on first use and reused
+by design, and the W-B11 work earlier today depends on that cache existing.
+
+**The fix already exists upstream and this tree does not have it.**
+`free_idle_panes` is in linux's `origin/main` and not in `browser-windows` —
+the one mac measured at 454 MiB given back. That makes it the fifth thing a
+single port run closes, alongside `theme_web.py`'s real fix, the
+`test_toolbar` and `test_reading2` rewrites, and the five adopted suites. It
+is also the answer to the trade rather than a choice between its halves:
+freeing a pane that has not been looked at for a while keeps the instant open
+for the pane he actually uses and gives the other four back.
+
+Not measured, and worth saying rather than estimating: how long
+`free_idle_panes` waits, and what it costs to rebuild a freed pane on the next
+open. Both are answerable here once the port lands.
+
 ## The one guard that would have caught six of today's mistakes
 
 Not a bug in the browser. The most repeated mistake of the day was mine and
