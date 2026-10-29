@@ -14,7 +14,7 @@
     "expands it. An absolute path works too."
   ],
   "linux_repo": "~/browser",
-  "ported_from": "0975755041e8d66db0c7dfcfe1c493dffe331fed",
+  "ported_from": "49437480477fb06b6e7c328e832a6e414c7de966",
   "merge_files": [
     "browser.py",
     "test_upgrade.py",
@@ -172,7 +172,9 @@
     "asserts the browser's font stack is asserting something about the edition",
     "it is run against, and in this one that stack really is the Windows one.",
     "test_look2 pinned the terminal look's `monospace` fallback and failed here",
-    "for exactly that reason."
+    "for exactly that reason.",
+    "",
+    "A 'find' or 'replace', and a marker 'pattern', may be a LIST of fragments instead of a string; win_port.py joins them with nothing between. That is not decoration. The strings these rules exist to keep out are his home directory, the subnet his own machines sit on and his mail handle, and a rule that spelled one out would put it in this public repo -- which is the leak, and which gitguard's pre-commit refuses, correctly. Splitting the needle is how the guard names what it forbids without carrying it."
   ],
   "substitutions": [
     {
@@ -321,6 +323,105 @@
       "find": "\"desktopNotifyHint\":\"\\u00dcber notify-send, wenn es installiert ist. Aus = die Zeile im Browser ist alles.\"",
       "replace": "\"desktopNotifyHint\":\"Unter Windows nicht \\u2014 die Zeile im Browser ist alles.\"",
       "_min_why": "merge-carried in browser.py; the marker holds the result",
+      "min": 0
+    },
+    {
+      "why": "His own home directory, written as a POSIX path, in the build that only runs on Windows. ~/browser still carries it at the ported base, so a port copies the leak straight back in and the browser-pages pre-commit check blocks every commit here again.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": [
+        "placeholder=\"/home/",
+        "tim/Notes\""
+      ],
+      "replace": "placeholder=\"C:\\Users\\You\\Notes\"",
+      "_min_why": "zero is the normal reading: the merge carries our side, and whether this fires depends on which of the two tools last wrote the page. The marker below is what enforces the result.",
+      "min": 0
+    },
+    {
+      "why": "The same placeholder as browser-pages/pages.json rewrites it, for the route where the page arrives from ~/claude/browser-linux instead.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": "placeholder=\"/home/you/Notes\"",
+      "replace": "placeholder=\"C:\\Users\\You\\Notes\"",
+      "_min_why": "same as above",
+      "min": 0
+    },
+    {
+      "why": "The subnet his own machines sit on, in a public repo. It is the host-override hint, and it appears three times: the settings page markup and the English and German devHostsHint strings in browser.py, which overwrite that markup at runtime. 192.0.2.10 is the RFC 5737 documentation range, which is what mac and linux already show.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": [
+        "example.com 192.168.",
+        "2.10."
+      ],
+      "replace": "example.com 192.0.2.10.",
+      "_min_why": "merge-carried on our side; fires when a port copies the page or the translation blob in fresh",
+      "min": 0
+    },
+    {
+      "why": "The same hint arriving by the other route: ~/claude/browser-linux writes 192.168.1.10 there.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": "example.com 192.168.1.10.",
+      "replace": "example.com 192.0.2.10.",
+      "_min_why": "same as above",
+      "min": 0
+    },
+    {
+      "why": "His subnet again, in the base-converter docstring's example network. 192.168.1.0/24 is the generic one linux uses, and it keeps the example a home subnet, which is the point of it.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": [
+        "ip 192.168.",
+        "2.0/24"
+      ],
+      "replace": "ip 192.168.1.0/24",
+      "_min_why": "merge-carried; a hit means a port brought the leaking docstring back",
+      "min": 0
+    },
+    {
+      "why": "Every remaining example address in the suites. These assert how a private address is treated, so any RFC 1918 one does the job identically -- and linux already writes 192.168.1 on exactly these lines.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": [
+        "192.168.",
+        "2."
+      ],
+      "replace": "192.168.1.",
+      "_min_why": "the four rules above run first and take the specific strings; this is the catch-all behind them, and zero is the healthy reading",
+      "min": 0
+    },
+    {
+      "why": "His home directory in the suites' example paths. linux writes /home/you on the same lines.",
+      "files": [
+        "browser.py",
+        "*.html",
+        "test_*.py"
+      ],
+      "find": [
+        "/home/",
+        "tim"
+      ],
+      "replace": "/home/you",
+      "_min_why": "catch-all; zero is the healthy reading",
       "min": 0
     }
   ],
@@ -575,6 +676,96 @@
       "name": "the README explains the vault ACL",
       "pattern": "\\bACL\\b",
       "min": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "browser.py never writes the subnet his machines sit on",
+      "pattern": [
+        "192\\.168\\.",
+        "2\\."
+      ],
+      "count": 0
+    },
+    {
+      "file": "*.html",
+      "name": "no shipped page writes that subnet either",
+      "pattern": [
+        "192\\.168\\.",
+        "2\\."
+      ],
+      "count": 0
+    },
+    {
+      "file": "test_*.py",
+      "name": "nor does any suite",
+      "pattern": [
+        "192\\.168\\.",
+        "2\\."
+      ],
+      "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "browser.py never writes his home directory",
+      "pattern": [
+        "/home/",
+        "tim"
+      ],
+      "count": 0
+    },
+    {
+      "file": "*.html",
+      "name": "no shipped page writes his home directory",
+      "pattern": [
+        "/home/",
+        "tim"
+      ],
+      "count": 0
+    },
+    {
+      "file": "test_*.py",
+      "name": "nor does any suite",
+      "pattern": [
+        "/home/",
+        "tim"
+      ],
+      "count": 0
+    },
+    {
+      "file": "settings.html",
+      "name": "the notes placeholder is the Windows one",
+      "pattern": "placeholder=\"C:\\\\Users\\\\You\\\\Notes\"",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "the host-override hint is the documentation address, in both languages",
+      "pattern": "example\\.com 192\\.0\\.2\\.10\\.",
+      "count": 2
+    },
+    {
+      "file": "browser.py",
+      "name": "the history page's icons come from the browser's own store, not Google",
+      "pattern": "def siteIcons\\(self, hosts_json\\):",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "...and the method it reads them through",
+      "pattern": "def site_icon_data\\(self, host_or_url=\"\"\\):",
+      "count": 1
+    },
+    {
+      "file": "history.html",
+      "name": "the history page asks the bridge for them",
+      "pattern": "bridge\\.siteIcons\\(",
+      "count": 1
+    },
+    {
+      "file": "*.html",
+      "name": "and no page fetches an icon from a third party",
+      "pattern": "s2/favicons\\?sz",
+      "count": 0
     }
   ],
   "_hand_regions_readme": [

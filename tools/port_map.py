@@ -51,6 +51,15 @@ def manifest():
     return json.loads(MANIFEST.read_text(encoding="utf-8"))
 
 
+def joined(value):
+    """A manifest string, or a list of fragments to concatenate. See the
+    same helper in win_port.py: a marker that names his home directory
+    or his subnet cannot spell it out in a repo that forbids it."""
+    if isinstance(value, list):
+        return "".join(value)
+    return value
+
+
 def names(seq):
     """The manifest's file lists carry prose entries starting with a '#'.
     Same convention as win_port.py, and it is '#' rather than '_' for a
@@ -66,6 +75,15 @@ def git(repo, *args, text=False):
     if out.returncode != 0:
         return None
     return out.stdout.decode("utf-8", "replace") if text else out.stdout
+
+
+def ancestor(repo, rev, of):
+    """Is rev on of's line of history? The one question a conflict count
+    cannot answer for itself -- see the refusal in main()."""
+    out = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", rev, of],
+        capture_output=True)
+    return out.returncode == 0
 
 
 def merge(base, ours, theirs):
@@ -198,7 +216,7 @@ def per_area(merged, name):
 
 def per_marker(merged, name, declared):
     print("How many conflicts a marker defends\n")
-    rules = [(m["name"], re.compile(m["pattern"], re.MULTILINE))
+    rules = [(m["name"], re.compile(joined(m["pattern"]), re.MULTILINE))
              for m in declared if m["file"] == name]
     defended, undefended = Counter(), []
     for _start, body in hunks(merged):
@@ -265,6 +283,61 @@ def main():
     if git(linux, "rev-parse", args.to, text=True) is None:
         print("%s is not a revision in %s" % (args.to, linux), file=sys.stderr)
         return 1
+    # Everything below replays base..to, so the shape of that range
+    # decides whether any of it means anything.
+    #
+    #   base is an ancestor of to   the range is the work to port; normal.
+    #   the range is EMPTY          every count below is a zero that means
+    #                               "nothing is in the range", not
+    #                               "nothing is left to port" -- and it
+    #                               reads as the second. This is what
+    #                               printed "0 commit(s)" and "no commit
+    #                               conflicts with this file" for a tree
+    #                               whose base was 39 commits ahead of
+    #                               main, on a dependabot branch.
+    #   no common ancestor          the three-way merge has no base at
+    #                               all; its conflict counts are noise.
+    #   diverged, range non-empty   the counts are real. Worth saying so
+    #                               out loud, not worth refusing over.
+    #
+    # Refusing in the first two: a planning tool that reports a clean tree
+    # because it measured the range backwards is worse than one that will
+    # not run.
+    if not ancestor(linux, base_rev, args.to):
+        span = (git(linux, "rev-list", "--count",
+                    "%s..%s" % (base_rev, args.to), text=True) or "0").strip()
+        ahead = (git(linux, "rev-list", "--count",
+                     "%s..%s" % (args.to, base_rev), text=True) or "?").strip()
+        shared = git(linux, "merge-base", args.to, base_rev, text=True)
+        where = git(linux, "branch", "-a", "--contains", base_rev, text=True)
+        where = (where.splitlines()[0].strip().lstrip("* ").strip()
+                 if where else None)
+        if span == "0" or not shared:
+            if span == "0":
+                print("ported_from %s is a DESCENDANT of %s in %s."
+                      % (base_rev[:9], args.to, linux), file=sys.stderr)
+                print("%s is %s commit(s) behind it, so %s..%s is empty and "
+                      "every count below would be a meaningless 0."
+                      % (args.to, ahead, base_rev[:9], args.to),
+                      file=sys.stderr)
+            else:
+                print("ported_from %s shares no history with %s in %s."
+                      % (base_rev[:9], args.to, linux), file=sys.stderr)
+                print("No common ancestor, so the three-way merge has no "
+                      "base and its conflict counts would be noise.",
+                      file=sys.stderr)
+            if where:
+                print("%s lives on %s" % (base_rev[:9], where),
+                      file=sys.stderr)
+            print("Measure against something that descends from the base "
+                  "(--to <rev>), or fix win_port.json's ported_from.",
+                  file=sys.stderr)
+            return 1
+        print("note: ported_from %s and %s have DIVERGED -- %s commit(s) to "
+              "replay, and %s on the base that %s does not have."
+              % (base_rev[:9], args.to, span, ahead, args.to), file=sys.stderr)
+        print("      the counts below are real; a port carries %s's side "
+              "only.\n" % args.to, file=sys.stderr)
 
     if args.commits or everything:
         per_commit(linux, base_rev, args.to, files)

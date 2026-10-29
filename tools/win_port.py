@@ -77,6 +77,21 @@ def show(repo, rev, path):
     return out.stdout
 
 
+def joined(value):
+    """A manifest string, which may be written as a list of fragments.
+
+    A guard has to name the thing it forbids, and the things forbidden
+    here are his home directory, the subnet his machines sit on and his
+    mail handle. Written out, this file would be the leak it exists to
+    prevent -- and gitguard refuses the commit, correctly. So a rule may
+    spell its needle as ["/home/", "<his login>"] and it is joined here.
+    Nothing is interpreted: the pieces are concatenated exactly.
+    """
+    if isinstance(value, list):
+        return "".join(value)
+    return value
+
+
 def matches(name, patterns):
     return any(fnmatch.fnmatch(name, p) for p in patterns)
 
@@ -103,9 +118,10 @@ def apply_substitutions(files, rules):
         for name, text in files.items():
             if not matches(name, rule["files"]):
                 continue
-            n = text.count(rule["find"])
+            find, repl = joined(rule["find"]), joined(rule["replace"])
+            n = text.count(find)
             if n:
-                files[name] = text.replace(rule["find"], rule["replace"])
+                files[name] = text.replace(find, repl)
                 hits += n
         counts.append(hits)
     return files, counts
@@ -119,7 +135,7 @@ def check_markers(files, markers):
         if not targets:
             bad.append("%s: no file matches %r" % (m["name"], m["file"]))
             continue
-        rx = re.compile(m["pattern"], re.MULTILINE)
+        rx = re.compile(joined(m["pattern"]), re.MULTILINE)
         total = sum(len(rx.findall(files[n])) for n in targets)
         want = m.get("count")
         if want is not None and total != want:
@@ -238,13 +254,13 @@ def generate(manifest, to_rev, verbose=True):
     if verbose:
         print()
         for rule, hit in zip(manifest["substitutions"], counts):
-            print("  subst   %-4d %s" % (hit, rule["find"][:58]))
+            print("  subst   %-4d %s" % (hit, joined(rule["find"])[:58]))
     for rule, hit in zip(manifest["substitutions"], counts):
         if hit < rule.get("min", 1):
             raise PortError(
                 "substitution %r matched %d time(s), expected at least %d.\n"
                 "Linux probably renamed it — update win_port.json."
-                % (rule["find"], hit, rule.get("min", 1)))
+                % (joined(rule["find"]), hit, rule.get("min", 1)))
 
     return files, to_sha
 
@@ -256,6 +272,85 @@ def soft(repo, *args):
     out = subprocess.run(["git", "-C", str(repo), *args],
                          capture_output=True, text=True)
     return out.stdout.strip() if out.returncode == 0 else None
+
+
+def ancestor_of(repo, rev, branch="main"):
+    """Is this commit actually on that branch's line of history?
+
+    Asked separately from "how far behind", because a count of zero
+    answers both "the base is the branch tip" and "the base is nowhere
+    near it" with the same number. git merge-base --is-ancestor is the
+    only one of the two that distinguishes them.
+    """
+    out = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", rev, branch],
+        capture_output=True, text=True)
+    return out.returncode == 0
+
+
+def twin(repo, base, branch="main"):
+    """The post-rewrite twin of a base, if that is what happened to it.
+
+    A history rewrite -- `git filter-branch` over the whole repo, then
+    `refs/original/*` dropped and the result force-pushed, which is what
+    ~/claude/leak-scrub/scrub.sh does -- gives every commit a new sha
+    while keeping its author date, its subject and its position. So the
+    base recorded before the rewrite is not gone and is not a judgement
+    call: its replacement is the commit on <branch> with the SAME author
+    date and the SAME subject and a DIFFERENT tree.
+
+    That is the one shape which looks exactly like "unrelated" (no
+    common ancestor, two lineages) while being completely benign, and
+    the one a future force-push will produce again. Returns
+    (sha, files_changed, branch) or None, and never guesses: an author
+    date is
+    recorded to the second and a subject is free text, so the pair is
+    specific enough to name a candidate and this reports it as a
+    candidate rather than acting on it.
+    """
+    want = soft(repo, "log", "-1", "--format=%aI%x00%s%x00%T", base)
+    if not want or "\0" not in want:
+        return None
+    adate, subject, tree = want.split("\0", 2)
+    rows = soft(repo, "log", branch, "--format=%H%x00%aI%x00%s%x00%T")
+    if not rows:
+        return None
+    for row in rows.splitlines():
+        parts = row.split("\0", 3)
+        if len(parts) != 4:
+            continue
+        sha, their_adate, their_subject, their_tree = parts
+        if their_adate == adate and their_subject == subject \
+                and their_tree != tree:
+            stat = soft(repo, "diff", "--numstat", base, sha)
+            files = len([l for l in stat.splitlines() if l.strip()]) \
+                if stat else 0
+            return sha, files, branch
+    return None
+
+
+def relation(repo, base, branch="main"):
+    """How the recorded base sits against a branch, as one of four words.
+
+    "on"        an ancestor of main, which is what a base is supposed to
+                be: ported_from..main is then the work to port.
+    "ahead"     a descendant of main. ported_from..main is empty, and
+                reading that as "level with main" is the bug this
+                replaced -- the tree was generated from something main
+                was never fast-forwarded to.
+    "diverged"  a common ancestor exists but neither contains the other.
+                The counts still mean something, so this is reportable
+                rather than fatal.
+    "unrelated" no common ancestor at all. Nothing here is a base of
+                anything, and a three-way merge against it is guesswork.
+    """
+    if ancestor_of(repo, base, branch):
+        return "on"
+    if soft(repo, "rev-list", "--count",
+            "%s..%s" % (base, branch)) == "0":
+        return "ahead"
+    shared = soft(repo, "merge-base", branch, base)
+    return "diverged" if shared else "unrelated"
 
 
 def drift(manifest):
@@ -277,7 +372,9 @@ def drift(manifest):
     if head is None:
         return ["  linux repo   %s is not a git repo, so drift is unknown"
                 % linux]
-    out = ["  linux repo   %s  (HEAD %s)" % (linux, head)]
+    branch = soft(linux, "rev-parse", "--abbrev-ref", "HEAD")
+    out = ["  linux repo   %s  (HEAD %s%s)"
+           % (linux, head, " on " + branch if branch else "")]
     if soft(linux, "cat-file", "-t", base) != "commit":
         out.append("  behind       unknown: ported_from %s is not a commit "
                    "in that repo" % base[:9])
@@ -285,6 +382,78 @@ def drift(manifest):
     behind = soft(linux, "rev-list", "--count", "%s..main" % base)
     if behind is None:
         out.append("  behind       unknown: no main branch in that repo")
+    elif (how := relation(linux, base)) != "on":
+        # "ported_from..main" being empty says nothing on its own: it is
+        # equally true of a base that IS main and of one that is nowhere
+        # near main. Counting alone cannot tell those apart, so this used
+        # to print "level with main" for a base that was never on main.
+        # The same lie d7ee8a1 took off the marker side, arriving the
+        # second time through the base pointer.
+        ahead = soft(linux, "rev-list", "--count", "main..%s" % base) or "?"
+        if how == "ahead":
+            out.append("  behind       UNKNOWN: ported_from %s is a "
+                       "DESCENDANT of main, not an ancestor" % base[:9])
+            out.append("               main is %s commit(s) behind it, so "
+                       "ported_from..main is empty" % ahead)
+            out.append("               and this line used to read \"level "
+                       "with main\". Nothing is level.")
+        elif how == "unrelated":
+            out.append("  behind       UNKNOWN: ported_from %s shares NO "
+                       "history with main here" % base[:9])
+            out.append("               no common ancestor at all: main has "
+                       "%s commit(s) it lacks, it has %s main lacks"
+                       % (behind, ahead))
+            out.append("               a three-way merge against that base "
+                       "is guesswork, not a port")
+        else:
+            out.append("  behind       DIVERGED: main has %s commit(s) "
+                       "ported_from lacks," % behind)
+            out.append("               and ported_from has %s that main "
+                       "lacks. The count is real, but a port" % ahead)
+            out.append("               carries main's side only.")
+            out.append("               see them: tools/win_port.py --to "
+                       "main --dry-run")
+        where = soft(linux, "branch", "-a", "--contains", base)
+        if where:
+            first = where.splitlines()[0].strip().lstrip("* ").strip()
+            out.append("               %s lives on %s" % (base[:9], first))
+        # Two things worth saying before "re-point it", because both make
+        # the base recoverable rather than a judgement call.
+        #
+        # A local main left behind by a force-push: the base is fine and
+        # the branch being measured against is the stale one. That is the
+        # state of ~/browser, whose main shares no history with its own
+        # origin/main.
+        if relation(linux, base, "origin/main") == "on":
+            short = soft(linux, "rev-list", "--count",
+                         "%s..origin/main" % base) or "?"
+            out.append("  stale main   the base IS on origin/main (%s commit"
+                       "(s) behind it)." % short)
+            out.append("               This repo's local main is the branch "
+                       "left behind, not the base.")
+            out.append("               measure with: --to origin/main")
+        else:
+            # A rewrite: the base's replacement is findable, not
+            # guessable. Tried on origin/main too, because a clone whose
+            # local main was left behind by the force-push has the
+            # rewritten lineage only on the remote-tracking branch.
+            got = twin(linux, base) or twin(linux, base, "origin/main")
+            if got:
+                sha, nfiles, found_on = got
+                out.append("  rewritten    %s looks like the PRE-REWRITE "
+                           "twin of %s" % (base[:9], sha[:9]))
+                out.append("               on %s: same author date, same "
+                           "subject, different tree," % found_on)
+                out.append("               %d file(s) between them. A "
+                           "filter-branch does exactly that." % nfiles)
+                out.append("               check it, then point ported_from "
+                           "at %s" % sha[:9])
+            elif how == "ahead":
+                out.append("               a port --to main would port "
+                           "backwards; point ported_from at a commit on main")
+            elif how == "unrelated":
+                out.append("               point ported_from at a commit "
+                           "this repo's main can actually reach")
     elif behind == "0":
         out.append("  behind       nothing: this tree is level with main")
     else:

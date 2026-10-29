@@ -401,10 +401,33 @@ and both `--check` and `port_map.py` honour it, so a drift report always
 describes the tree a port would actually read.
 
 `--check` verifies this tree — every marker holds, every `.py` parses — and
-then reports the drift: which clone, how many commits of its `main` this tree
-is behind, and how much uncommitted work sits there that no port can see. It
-is deliberately two statements rather than one, because the markers passing
-says nothing about the edition being current.
+then reports the drift: which clone and which branch it is on, how many
+commits of its `main` this tree is behind, and how much uncommitted work sits
+there that no port can see. It is deliberately two statements rather than one,
+because the markers passing says nothing about the edition being current.
+
+The drift half classifies the recorded base before it counts anything, and
+that is not a detail. `ported_from..main` is empty both when the base *is*
+`main` and when the base is a descendant of it, so a count alone cannot tell
+"level" from "nowhere near" — and for a while this printed *level with main*
+for the second case. There are four shapes, and `--check` names which one it
+is: `on` (an ancestor of `main`, what a base is for), `ahead` (a descendant —
+the empty range that read as health), `diverged` (a common ancestor, neither
+containing the other; the counts are real, and a port carries `main`'s side
+only) and `unrelated` (no common ancestor at all, so the merge has no base and
+its conflict counts are noise). `port_map.py` refuses on `ahead` and
+`unrelated` rather than print zeros, notes `diverged` and carries on.
+
+**Where this tree actually stands**, measured both ways: against `~/browser`
+the base is 39 commits *ahead* of that repo's `main`, reachable only from a
+stale dependabot branch; against `~/claude/browser-linux` it shares *no history
+with `main` at all* — no merge base, 62 commits on one side and 47 on the other
+— and `origin/main` there shares none with it either. Both clones have the same
+origin, so the upstream history was **rewritten**, and `ported_from` names a
+commit from the lineage before that, which now survives only on stale remote
+branches. Every "0 commits" this tree has reported comes from that one fact.
+Fixing it means pointing `ported_from` at a commit the live `main` can reach,
+and that choice decides what gets replayed, so it is not guessed at here.
 
 `browser.py` is a three-way merge — the base is the Linux commit this tree was
 last generated from, which `tools/win_port.json` records — so the Windows
@@ -422,6 +445,22 @@ all stop it and say what to do.
 The Windows-only code paths cannot run on the machine this is built on, so
 they are covered by `--check` rather than by tests. Everything else is covered
 by the Linux suite, run here against this `browser.py`.
+
+Six of the markers assert an *absence* (`count: 0`): none of the 118 files a
+port writes may contain the home directory of the person this is built for, the
+subnet his machines sit on, or his mail handle. `~/browser` still carries two of
+those at the recorded base, and the pages are copied rather than merged, so
+substitutions rewrite every spelling either upstream uses on the way in and the
+markers refuse the port if any of it arrives anyway. A rule may spell its needle
+as a **list of fragments** rather than a string — joined with nothing between —
+because a guard that writes out the string it forbids puts that string in this
+public repo, which is the leak, and the pre-commit hook refuses it.
+`tests/test_leakguard.py` is what keeps all of that honest: it checks the tree
+is clean, that the substitutions are idempotent and that each fragment needle
+still joins back to what it must match, and then it **simulates nine
+regressions a port could plausibly produce and requires the marker that should
+catch each one to actually catch it.** A marker nobody has ever seen fail is an
+untested assertion.
 
 ### Unsettled, for want of a Windows machine
 
