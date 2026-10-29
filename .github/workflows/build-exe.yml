@@ -45,7 +45,7 @@ jobs:
           }
           $build = (git rev-list --count HEAD).Trim()
           if ([int]$build -lt 2) {
-            Write-Error "commit count is $build: the checkout is shallow, so this would publish 1.0.1 again (needs fetch-depth: 0)"
+            Write-Error "commit count is ${build}: the checkout is shallow, so this would publish 1.0.1 again (needs fetch-depth: 0)"
             exit 1
           }
           $ver = "$series.$build"
