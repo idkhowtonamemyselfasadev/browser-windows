@@ -282,6 +282,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-B17 | The alt-drag link box took its **border** from the themed payload and filled with a hardcoded `rgba(137,180,250,0.12)` on the line below — mocha's accent at 12%. The outline moved with the theme and the fill did not, on **115 of 116**. `NAV_JS` is injected with `setSourceCode`, so nothing tints it; the colour has to be sent | Medium | **fixed** |
 | W-B18 | `MEDIA_TOOLS.wheelvolume` (volume readout) and `PAGE_TOOLS.edit` (edit badge) painted in `#000`/`#fff` — three-digit, which `_recolor` cannot match at all — and their dispatchers never tinted. Normalised and tinted in the same edit, in that order | Medium | **fixed** |
 | W-S02 | Five suites adopted from other editions were in **no** list in `win_port.json` — not `copy_files` (the port would raise), not `win_only` (they are not ours). A file in no list reads exactly like a file that is handled | Low | **fixed** |
+| W-B19 | Two injected lines draw in `W.accent` while their dead fallback names a different token: the find-in-page hit marks on the scroll rail (`#f9e2af` = `yellow`) and the accessibility checker's **no alt text** outline (`#f38ba8` = `red`). Both render in the link/focus colour, so neither reads as what it is. The payloads send only `accent`/`bg`/`text`, so the fallback is the only record of the intent | Medium | **OPEN — needs the payload first** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -562,6 +563,46 @@ reads exactly like a file that is handled.
     an entry naming a file that is gone  FAIL names nothing that is gone
     an entry with no reason              FAIL every entry says where it came from
     the same suite pending AND ported    FAIL nothing is both pending and ported
+
+**W-B19 — a fallback that records an intent the key contradicts.** Swept all
+20 blobs for `(W.x || "<literal>")` where the literal is a `THEME_SOURCE`
+value, expanding three-digit forms first so `#fff` is compared as `#ffffff`:
+
+    matching key and literal      11
+    literal is not a token         1   NAV_JS (W.accentSoft || "rgba(137,180,250,0.12)")
+    MISMATCHED                     4
+
+    A11Y_JS   (W.accent || "#f38ba8")   literal is red
+    NAV_JS    (W.accent || "#f9e2af")   literal is yellow
+    A11Y_JS   (W.text   || "#fff")      literal is bright
+    NAV_JS    (W.text   || "#fff")      literal is bright
+
+**Two of the four are semantic and they are the bugs.** `#f9e2af` is `yellow`
+and that line draws the find-in-page hit marks on the scroll rail; `#f38ba8`
+is `red` and that line outlines an image with **no alt text**. Both draw in
+`W.accent` instead — which on most themes is also the link colour and the
+focus ring, so a search hit does not read as a search hit and a problem
+marker does not read as a problem.
+
+**The other two are not the same finding** and I am not filing them as one.
+`(W.text || "#fff")` is a disagreement between `text` (`#cdd6f4` on mocha)
+and `bright` (`#ffffff`), and which one was meant is genuinely ambiguous —
+"pure white" is a defensible fallback for text. Reported as sloppiness, not
+as intent lost.
+
+Why none of it is visible: both payload builders send **three** colour keys,
+`accent`, `bg`, `text`. No `yellow`, no `red`. So `W.accent` always arrives,
+every fallback is dead code, and the fallback is the only surviving record of
+what the line was for. The fix is two halves in order, the same trap as
+normalise-then-tint: add `yellow` and `red` to the payloads **first**, then
+change the keys. Change the key alone and `W.yellow` is undefined, the dead
+fallback comes alive, and the line freezes to mocha's yellow on all 116
+themes.
+
+Found because the fallbacks were being counted for a different reason. The
+check worth keeping is the one that catches the disagreement rather than the
+style: *every `(W.x || "literal")` whose literal is a token's value must have
+`x` equal to that token's name.*
 
 **Why the injected scripts must never be tinted — measured, not assumed.**
 Section 7 of the guard fixes `NAV_JS` by putting the colour in the *payload*,
