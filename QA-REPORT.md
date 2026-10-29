@@ -270,8 +270,11 @@ a forgiving fallback returning a plausible wrong value.
 | W-B05 | `settings.html:4510` calls `refreshSettings()`, which is defined in `start.html`. Seven Appearance buttons do their work and never refresh the page | Medium | **OPEN — upstream** |
 | W-B06 | `#11111b` on `mictest.html:25`, the mic meter track, is not in `THEME_SOURCE`, so it stays near-black on all 116 themes | Low | **OPEN — upstream** |
 | W-B08 | `download_dir(create=True)` creates the folder the user *chose* and returns the **default** without creating it. On a machine with no `~/Downloads`, it hands back a path that does not exist — and the docstring's whole point is that `create=True` conjures the folder up | Medium | **fixed** |
-| W-B09 | `pretty_url()`'s `xn--` branch is dead — `QUrl.host()` already decodes, so the test is never true — and its comment credits decoding with the homograph protection when decoding is the hazard. **Not a security hole here:** `lookalike_warning()` is wired to the address bar and fires on all three attacks | Low | **OPEN — upstream** |
+| W-B09 | `pretty_url()`'s `xn--` branch is dead — `QUrl.host()` already decodes, so the test is never true — and its comment credits decoding with the homograph protection when decoding is the hazard. ~~Not a security hole here~~ — **see W-B10, I cleared this on a grep and the grep lied** | Low | **OPEN — upstream** |
 | W-B07 | Settings → Performance offers *"Sleep background tabs before the machine swaps"* with the hint *"Reads the kernel's own memory-pressure figure (PSI)"*. Windows has no PSI and no `/proc`, so that half can never fire — the switch goes on and the timer runs for nothing | Medium | **OPEN — upstream** |
+| W-B10 | **Neither of the address bar's two security marks has ever been shown.** `update_bar_marks` did `QUrl(str(url))`; `str()` of a QUrl is its Python repr, which parses to an empty everything. Every real navigation arrives as a QUrl, so host was always `""` — the look-alike badge *and* the plain-http **Not secure** badge were hidden on every page load. Every http page looked exactly like an https one | High | **fixed** |
+| W-B11 | The seventh tool dispatcher never tinted. Six call `tint_js`; `dev_tool` did not, and `DEV_TOOLS.update(DEV_TOOLS_PAGE)` makes it the **only** route to the five overlays that were normalised to tokens so they could be tinted — the ruler readout, hidden-field notes, perf box, key viewer, outline tints. Mocha over a latte window | Medium | **fixed** |
+| W-B12 | Three more tool tables paint and are never tinted — `PAGE_TOOLS` (back-to-top button, edit badge, visited-link recolour), `MEDIA_TOOLS` (volume OSD), `READER_TOOLS` (hint markers). Their literals are not tokens either, so tinting them is a no-op until someone decides which are the browser speaking | Low | **OPEN — needs a product call** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -317,12 +320,121 @@ decide the result: `test_capture2`, `test_files`, `test_downloads`, `test_gaps3`
 entry — `Downloads` — which is the fix doing its job under a real suite rather
 than under a probe.
 
-**W-B09 detail**, because a finding that says *"not a security hole"* needs its
-evidence as much as one that says it is. The decoded host really does read as the
-real domain — `pretty_url("https://xn--pple-43d.com/login")` returns
-`https://аpple.com/login` — so the dead branch and its backwards comment are real.
-What makes it Low rather than High is that the protection exists elsewhere and
-works:
+**W-B10 detail — driven, not read, and reproduced twice.** The probe records
+every `show_address` call, because an empty bar has two possible causes and only
+one of them is this bug. First run of the probe the bar was empty and the mark
+hidden — and the bar was empty because the address bar had focus, so
+`_url_changed` skipped `show_address` entirely. A hidden mark there proves
+nothing. Cleared the focus and ran it again:
+
+    urlbar has focus: False
+
+    (A) one ordinary http page load, through the real signal
+        show_address calls : 1
+          handed a QUrl  PyQt6.QtCore.QUrl('http://127.0.0.1:44589/plain')
+        bar shows          : 'http://127.0.0.1:44589/plain'
+        'Not secure' shown : False        <-- the bug
+    (B) a second navigation, same tab
+        show_address calls : 1
+          handed a QUrl  PyQt6.QtCore.QUrl('http://127.0.0.1:44589/two')
+        bar shows          : 'http://127.0.0.1:44589/two'
+        'Not secure' shown : False        <-- again
+    (C) the SAME url handed in as a string
+        'Not secure' shown : True  'Not secure'
+
+So the function works; it was never given anything to work with. The bar text was
+right the whole time because `bar_display_text` nine lines above has the tolerant
+form — which is what made the method look healthy.
+
+    str(QUrl('http://127.0.0.1/plain'))        "PyQt6.QtCore.QUrl('http://…')"
+    QUrl(str(that)).host() / .scheme()         '' / ''
+    QUrl(that.toString()).host() / .scheme()   '127.0.0.1' / 'http'
+
+**30 sites** in this tree used `QUrl(str(...))`; the same count as linux. Five
+were wrong in ways with a user-visible cost: `update_bar_marks`, the
+`show_address` tooltip (it was showing the Python repr of his own URL),
+`save_link_target` (scheme `""` is not https, so Alt+click-to-save and
+save-image-as saved nothing), and the `group_rule_for` / `session_rule_for`
+lookups (host `""`, so a rule he wrote never matched a tab opened with a QUrl).
+Fixed the class rather than the five: one module-level `as_qurl(url)`, all 30
+sites through it, adopted from linux's `62e5819`. `Browser._host_of` has existed
+all along for exactly this, and its docstring says *"every place that takes
+either has to come through here"* — 30 places did not, because the broken form
+looks like the careful one.
+
+One extra defect the fix uncovered: `update_bar_marks` never called
+`place_bar_extras()`, whose own docstring says it is asked *"whenever one of them
+appears"*. A mark that showed would have kept default geometry on top of the lock
+button and painted over the start of the address. Nobody could see it because
+nothing ever showed.
+
+After: `test_barmarks.py` (adopted from linux) **40 checks, all ok**, and the
+driven probe re-run — `'Not secure' shown : True` on both navigations.
+
+**W-B11 detail — a green check that proved nothing, which is what the guard was
+for.** Porting linux's off-palette work normalised five `DEV_TOOLS_PAGE`
+overlays from upstream Catppuccin's `#11111b` to real tokens, and
+`test_offpalette.py` went green: check 2 says no snippet holds an off-palette
+colour (true), check 3 says `tint_js` moves them on a light theme (true, in
+isolation). Neither asks whether the code that runs them calls `tint_js`.
+
+Swept every tool table rather than checking one, and the table is the finding:
+
+    DESK_TOOLS      13 snippets,  1 paints   dispatcher 32470   tint_js: YES
+    READ_TOOLS      22 snippets,  7 paints   dispatcher 33225   tint_js: YES
+    MEDIA_TOOLS2    34 snippets,  2 paints   dispatcher 34208   tint_js: YES
+    PLAY_TOOLS      16 snippets,  4 paints   dispatcher 35734   tint_js: YES
+    FORM_TOOLS      18 snippets,  0 paints   dispatcher 36856   tint_js: YES
+    FILE_TOOLS       5 snippets,  0 paints   dispatcher 39698   tint_js: YES
+    DEV_TOOLS       19 snippets,  7 paints   dispatcher 41529   tint_js: no
+    PAGE_TOOLS      16 snippets,  3 paints   dispatcher 25729   tint_js: no
+    MEDIA_TOOLS     16 snippets,  1 paints   dispatcher 25888   tint_js: no
+    READER_TOOLS     7 snippets,  1 paints   dispatcher 28583   tint_js: no
+
+Driven with a real window, three themes, three overlays, before and after:
+
+    theme    overlay background, before fix      after fix
+    latte    rgba(13, 13, 18, 0.95)   mocha      rgba(239, 241, 245, 0.95)
+    frappe   rgba(13, 13, 18, 0.95)   mocha      rgba(48, 52, 70, 0.95)
+    mocha    rgba(13, 13, 18, 0.95)              rgba(13, 13, 18, 0.95)
+
+Read off `getComputedStyle(...).backgroundColor` in the page, not off the
+snippet's text, and each theme's own `surface`. `#0d0d12` is mocha's surface, so
+on mocha nothing moves — which is the half that made this invisible.
+
+**W-B12 detail, and why it is open rather than fixed.** The other three untinted
+dispatchers hold colours that are not tokens, so routing them through `tint_js`
+changes nothing today — a call that looks like coverage and does nothing is the
+exact shape this report keeps finding. Each needs a decision first:
+
+    PAGE_TOOLS.totop        rgba(20,20,20,.75) + #fff   a button the BROWSER
+                                draws — should follow the theme
+    MEDIA_TOOLS.wheelvolume #000 + #fff                 a volume readout the
+                                BROWSER draws — should follow the theme
+    PAGE_TOOLS.edit         #000 + #fff                 same, an edit-mode badge
+    READER_TOOLS.hints      #ffd866 on #000, #806000    a highlighter pen; a
+                                marker colour may be deliberately not the theme
+    PAGE_TOOLS.visited      #b48ead                     recolours the SITE's
+                                visited links; arguably not ours to theme
+
+The first three are the browser speaking and want normalising to tokens the way
+linux did the other five. The last two are product calls, so they go to Tim
+rather than being decided here.
+
+**W-B09 detail, and a correction I got wrong in the safe direction.** What I
+wrote here yesterday was: *"Not a security hole — `lookalike_warning()` is wired
+to the address bar and fires on all three attacks."* **That was wrong, and the
+way it was wrong matters more than the finding.** The guard fires when it is
+asked. It was never asked. See **W-B10**; the honest grade for the pair is High,
+and it is not an IDN finding at all.
+
+What stands from the original W-B09: the `xn--` branch in `pretty_url` is dead
+(`QUrl.host()` already decodes, so `startswith("xn--")` is never true) and its
+comment credits decoding with the protection when decoding is the hazard. Still
+Low on its own.
+
+What does not stand is the evidence I used to clear it. I called
+`lookalike_warning()` directly with host strings and watched it fire:
 
     xn--pple-43d.com    host аpple.com   → lookalike_warning 'mixed:аpple'
     xn--80ak6aa92e.com  host аррӏе.com   → 'script:аррӏе.com'
@@ -330,11 +442,11 @@ works:
     apple.com                            → ''  (quiet, correctly)
     paypal.com                           → ''  (quiet, correctly)
 
-`lookalike_warning()` (browser.py:1975) does mixed-script detection, a
-CONFUSABLES fold against a `WELL_KNOWN_HOSTS` list and a Cyrillic/Greek
-catch-all, and `browser.py:40360` puts `barLookalike` in the address bar when it
-fires. I had this written up as a High before I checked whether the user was
-warned.
+Every line of that is true and none of it was the question. The question was
+whether the bar ever shows the badge, and for that I read the call sites — found
+`lookalike_warning` defined at 1975 and called from the bar's own method — and
+called it wired. **A grep tells you a line exists, not that it ever runs with a
+usable argument.** The thing that found the real bug was driving the bar.
 
 **W-B05 detail**, because of how quiet it is: `bridge.appearanceAction` *exists*, so
 the theme really is saved, exported, starred or reset. Then the callback throws
@@ -355,6 +467,8 @@ through it. Present in all four editions at the same line.
 | `tests/test_leakguard.py` | nothing of the user's is in any file a port writes |
 | `tests/test_portbase.py` | the recorded port base is really an ancestor |
 | `test_downloaddir.py` | does `create=True` create the **default** too, and `create=False` still create nothing? (ported) |
+| `test_offpalette.py` | does every colour the browser PAINTS come out of the theme? the inverse of test_themetokens (ported) |
+| `test_barmarks.py` | does the bar's security mark fire for a QUrl as well as a string, and is `QUrl(str(…))` gone? (ported) |
 
 Each was made to fail on purpose before being trusted — the bug reintroduced in a
 `git archive` copy, never in the tree.
@@ -428,7 +542,7 @@ call `js()` nowhere and have some other cause.
 
 ## Suite status
 
-97 suites (96 plus `test_downloaddir.py`). Four full runs today, and the red set had **zero overlap** between any
+99 suites (96 plus `test_downloaddir`, `test_offpalette`, `test_barmarks`). Four full runs today, and the red set had **zero overlap** between any
 two of them:
 
     run 1   test_dev, test_themefix                        both pass alone
