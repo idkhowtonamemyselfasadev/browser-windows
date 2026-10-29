@@ -402,6 +402,44 @@ Read off `getComputedStyle(...).backgroundColor` in the page, not off the
 snippet's text, and each theme's own `surface`. `#0d0d12` is mocha's surface, so
 on mocha nothing moves — which is the half that made this invisible.
 
+**The guard's own blind spots, three closed and one proven open.** Took
+linux's patch for `test_offpalette.py` by hand (their file had already moved, so
+the hunks went in against mine) — 16 checks to **18**, and three ways it used to
+pass for the wrong reason:
+
+  - `HEX` matched six digits only, so a tree with `#000` block pages read
+    *"all ok"*. `_recolor`'s own regex is six-digit too, so a three-digit
+    literal can never be swapped **even where the tint runs** — worse than an
+    off-palette six-digit one, not more forgivable.
+  - a token's own hex was excused inside a generated page. Right for the
+    snippets, which go through `_recolor`; wrong for the pages, which are
+    string-formatted and never recoloured. `#000000` there only happens to
+    equal `bg` today.
+  - the exemption list was global, so a `#ffffff` written for Minecraft chat
+    excused a white background anywhere. Now keyed `(literal, where)`.
+
+Mutation-tested here, each with only that one thing reverted:
+
+    dev_tool's tint_js removed        FAIL (6) ['DEV_TOOLS']
+    focus page back to #000           FAIL (1) #000, #cdd6f4, #89b4fa in focus_page
+    a #fff background in diff_html    FAIL (1) '#fff in diff_html'
+    a #111 in DESK_TOOLS.counter      FAIL (2) three-digit + (5) surface
+    winfull's letterbox to #00f       FAIL (2) three-digit
+    twitchgrid's letterbox to #0f0    FAIL (2) three-digit
+
+**And one that did not fail, which is the second half of W-B12.** The first
+aim of that last mutation hit `PAGE_TOOLS.edit` instead of the letterbox and
+passed, so I re-aimed it and then tested the gap deliberately:
+
+    #11111b added to PAGE_TOOLS.totop     all ok      <-- invisible
+    the same #11111b in READ_TOOLS        FAIL (2)    <-- caught
+
+`TOOLS` in the suite names seven tables; the tree has ten. So the three cold
+tables are not only undecided, they are **unswept** — an off-palette literal
+added to `PAGE_TOOLS`, `MEDIA_TOOLS` or `READER_TOOLS` tomorrow is invisible to
+the guard that exists for exactly that. Same shape as `test_contrast.py`'s
+`sheets()` listing six of nine pages. Reported upstream.
+
 **W-B12 detail, and why it is open rather than fixed.** The other three untinted
 dispatchers hold colours that are not tokens, so routing them through `tint_js`
 changes nothing today — a call that looks like coverage and does nothing is the
@@ -467,7 +505,7 @@ through it. Present in all four editions at the same line.
 | `tests/test_leakguard.py` | nothing of the user's is in any file a port writes |
 | `tests/test_portbase.py` | the recorded port base is really an ancestor |
 | `test_downloaddir.py` | does `create=True` create the **default** too, and `create=False` still create nothing? (ported) |
-| `test_offpalette.py` | does every colour the browser PAINTS come out of the theme? the inverse of test_themetokens (ported) |
+| `test_offpalette.py` | does every colour the browser PAINTS come out of the theme, and does the code that RUNS a snippet tint it? the inverse of test_themetokens (ported; 18 checks) |
 | `test_barmarks.py` | does the bar's security mark fire for a QUrl as well as a string, and is `QUrl(str(…))` gone? (ported) |
 
 Each was made to fail on purpose before being trusted — the bug reintroduced in a
