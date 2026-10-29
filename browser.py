@@ -9531,7 +9531,12 @@ class GroupTabBar(QTabBar):
         # asleep: dimmed, with a mark. A sleeping tab reloads when you
         # click it, and that is worth seeing before you click.
         if getattr(w, "_asleep", False):
-            veil = QColor(theme_color("base"))
+            # "bg", not "base": there is no "base" in THEME_SOURCE, so
+            # theme_color fell through to its #000000 default on all 116
+            # themes and veiled a sleeping tab in black. Invisible on
+            # Mocha, where the background is black anyway, and wrong on
+            # the 30 light ones. Dimming goes toward the background.
+            veil = QColor(theme_color("bg"))
             veil.setAlpha(110)
             painter.fillRect(rect.adjusted(1, 3, -1, -3), veil)
             painter.setPen(QColor(theme_color("muted")))
