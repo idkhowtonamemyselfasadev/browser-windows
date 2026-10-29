@@ -530,6 +530,16 @@ exactly `test_favorites`' exit 139. But there were **3.1 G free** at the time,
 so the mechanism was available and the condition was not met. `test_favorites`
 stays unexplained rather than being given a cause that fits the story.
 
+**Checked, because it was offered as a sixth thing the port would close, and
+it is not.** mac's `79ef707` *"the test harness stopped eating the RAM it needs
+to run"* has the fix — `_boot.py` +54, `tests/harness.py` +28 — but it is in
+**mac's clone**, and this edition's port reads `~/browser`, whose `origin/main`
+is the remote the Linux edition publishes to. Neither `origin/main` nor `main`
+there has an `atexit` or an `rmtree` in `_boot.py`. So the port brings **five**
+things, not six, and W-B20 waits on mac's fix reaching the shared upstream
+first — the orphan problem from the other side, exactly like the five suites
+this edition adopted and cannot list.
+
 `_boot.py` is in `copy_files`, so this is upstream's to fix and the fix is
 `_tidy_scratch`'s shape with the other prefix. Not hand-edited here for the
 same reason as `test_toolbar` and `test_reading2`: a newer copy trips the
