@@ -766,6 +766,42 @@
       "name": "and no page fetches an icon from a third party",
       "pattern": "s2/favicons\\?sz",
       "count": 0
+    },
+    {
+      "file": "browser.py",
+      "name": "the native title bar follows the theme (Windows only)",
+      "pattern": "def _windows_dark_titlebar\\(widget, dark\\):",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "...declared once and called once",
+      "pattern": "_windows_dark_titlebar\\(widget, dark\\)",
+      "count": 2
+    },
+    {
+      "file": "browser.py",
+      "name": "...through the method the theme and the windows share",
+      "pattern": "def restyle_window_frames\\(self\\):",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "...applied on a theme change, a new window, and the first one",
+      "pattern": "restyle_window_frames\\(\\)",
+      "count": 3
+    },
+    {
+      "file": "browser.py",
+      "name": "...and both DWM attribute numbers are tried, for Win10 < 19041",
+      "pattern": "for attribute in \\(20, 19\\):",
+      "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "...and Qt is told the scheme, so its dialogs follow too",
+      "pattern": "hints\\.setColorScheme\\(Qt\\.ColorScheme\\.Dark if dark",
+      "count": 1
     }
   ],
   "_hand_regions_readme": [

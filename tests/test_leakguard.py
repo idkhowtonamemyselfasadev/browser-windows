@@ -174,6 +174,37 @@ REGRESSIONS = [
     ("a page fetching icons from Google again",
      "history.html", "img.src = kept;",
      'img.src = "https://www.google.com/s2/favicons?sz=32&domain=" + host;'),
+    # The Windows title bar. Upstream has none of this -- the desktop
+    # draws the frame there and is right to -- so to a port these lines
+    # look like an edition-only region, which is exactly the kind a
+    # hand-resolved conflict drops. Drop any of them and a dark theme
+    # gets a white title bar again, which is the one thing that makes a
+    # Qt program read as broken rather than minimal on Windows.
+    ("the title-bar helper dropped by a resolution",
+     "browser.py", "def _windows_dark_titlebar(widget, dark):",
+     "def _windows_dark_titlebar_gone(widget, dark):"),
+    ("the helper kept but no longer called",
+     "browser.py", "                _windows_dark_titlebar(widget, dark)",
+     "                pass  # no longer calls it"),
+    ("the method the theme and the windows share dropped",
+     "browser.py", "def restyle_window_frames(self):",
+     "def restyle_window_frames_gone(self):"),
+    ("the first window no longer getting its frame themed",
+     "browser.py", "    if not headless:\n        win.restyle_window_frames()",
+     "    if not headless:\n        pass"),
+    # Windows 10 before build 19041 numbers the attribute 19, not 20.
+    # Asking with only 20 there is refused and the title bar stays
+    # white, silently, on exactly the older machines least likely to be
+    # tested on.
+    ("only the newer DWM attribute number tried",
+     "browser.py", "for attribute in (20, 19):",
+     "for attribute in (20,):"),
+    # setColorScheme is the half that reaches Windows' own dialogs. Lose
+    # it and the frame is still right while the file picker comes up
+    # white, which is harder to notice and just as wrong.
+    ("Qt no longer told the scheme, so its dialogs stop following",
+     "browser.py", "hints.setColorScheme(Qt.ColorScheme.Dark if dark",
+     "hints.setColorSchemeGone(Qt.ColorScheme.Dark if dark"),
 ]
 for what, name, old, new in REGRESSIONS:
     if name not in FILES:

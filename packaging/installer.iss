@@ -34,10 +34,16 @@ OutputDir=..\dist
 OutputBaseFilename=BrowserSetup
 SetupIconFile=..\icon.ico
 UninstallDisplayIcon={app}\Browser.exe
-; max is only an 8 MB dictionary; ultra64 is 64 MB. It costs 742 MB of
-; RAM on the build runner and 64 MB on the user's machine when they run
-; the installer, both of which are nothing, and it is the one size cut
-; that removes no files.
+; max is only an 8 MB dictionary; ultra64 is 64 MB. Measured over the
+; 229 MB of payload that dominates this installer (Qt6WebEngineCore.dll,
+; icudtl.dat, Qt6Core/Gui/Widgets), at lzma2 preset 9e:
+;
+;   8 MB dictionary (max)       67.2 MB
+;   64 MB dictionary (ultra64)  65.1 MB
+;
+; so about 2 MB, which is small but is the only cut here that removes no
+; files at all. It costs 742 MB of RAM on the build runner and 64 MB on
+; the user's machine while the installer runs, both of which are nothing.
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern

@@ -1019,6 +1019,60 @@ def _windows_downloads():
         return None
 
 
+def _windows_dark_titlebar(widget, dark):
+    """Paint one window's title bar to match the browser's own theme.
+
+    Windows draws the title bar, not Qt, and it draws it light unless it
+    is told otherwise. A dark theme under a white title bar is the
+    single thing that makes a Qt program look unfinished on Windows --
+    not minimal, broken. Qt 6.5 and later will follow the *system*
+    light/dark setting, which is the wrong question here: this browser
+    has 116 themes of its own and the one in use is the one the frame
+    has to agree with, whatever Windows itself is set to.
+
+    DwmSetWindowAttribute with DWMWA_USE_IMMERSIVE_DARK_MODE is the
+    documented way to say it per window. The attribute was numbered 19
+    before Windows 10 build 19041 and 20 from then on, and asking with
+    the wrong number is simply refused, so both are tried -- 20 first,
+    because that is every supported build except the oldest two.
+
+    Returns True when Windows accepted it. False everywhere else,
+    including on every other platform, where doing nothing is the
+    correct behaviour rather than a failure.
+
+    UNVERIFIED -- never executed: there is no Windows machine or VM
+    here, so this has never actually painted a title bar.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        handle = widget.windowHandle()
+        if handle is None:
+            return False  # not realised yet; the next apply_theme gets it
+        hwnd = int(handle.winId())
+        if not hwnd:
+            return False
+        dwm = ctypes.windll.dwmapi
+        dwm.DwmSetWindowAttribute.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint,
+            ctypes.POINTER(ctypes.c_int), ctypes.c_uint]
+        dwm.DwmSetWindowAttribute.restype = ctypes.c_long
+        value = ctypes.c_int(1 if dark else 0)
+        for attribute in (20, 19):
+            if dwm.DwmSetWindowAttribute(
+                    ctypes.c_void_p(hwnd), ctypes.c_uint(attribute),
+                    ctypes.byref(value), ctypes.sizeof(value)) == 0:
+                return True
+        return False
+    except Exception:
+        # an old build, a stubbed dwmapi, a window that went away
+        # mid-call: a title bar of the wrong colour is not worth a
+        # traceback on the way up
+        return False
+
+
 if sys.platform == "win32":
     DOWNLOAD_DIR = _windows_downloads() or DOWNLOAD_DIR
 # spell-check needs a Chromium .bdic dictionary on disk; these are
@@ -24455,6 +24509,7 @@ class Browser(QMainWindow):
         win.resize(self.width(), self.height())
         win.move(self.x() + 40, self.y() + 40)
         win.show()
+        win.restyle_window_frames()
         return win
 
     def new_private_window(self):
@@ -58251,6 +58306,49 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         """What would be too faint to read, for the editor to say so."""
         return theme_contrast(seed or theme_seed())
 
+    def restyle_window_frames(self):
+        """Every window's title bar, and Windows' own dialogs, agree
+        with the theme in use.
+
+        Windows only, and deliberately so. Elsewhere the desktop draws
+        the frame from its own settings and is right to; here the frame
+        is drawn light until something says otherwise, so a dark theme
+        comes up with a white title bar over it.
+
+        Two mechanisms, because they cover different things:
+
+        QStyleHints.setColorScheme (Qt 6.8 and later) is the documented
+        one, and it reaches further than the frame -- the file picker
+        and the other dialogs Windows draws for us follow it too, and
+        those are just as obvious when they come up white.
+
+        DwmSetWindowAttribute is still called per window afterwards. It
+        is what Qt itself uses underneath, it costs nothing when Qt has
+        already set it, and it is the only route on a Qt older than 6.8
+        or a window Qt did not apply it to.
+
+        Called from apply_theme and once each time a window is shown: a
+        window that is not on screen yet has no handle for Windows to be
+        told about (see _windows_dark_titlebar).
+
+        UNVERIFIED -- never executed: there is no Windows machine here.
+        """
+        if sys.platform != "win32":
+            return
+        dark = theme_is_dark()
+        app = QApplication.instance()
+        if app is None:
+            return
+        try:
+            hints = QGuiApplication.styleHints()
+            hints.setColorScheme(Qt.ColorScheme.Dark if dark
+                                 else Qt.ColorScheme.Light)
+        except (AttributeError, RuntimeError):
+            pass  # Qt older than 6.8: the DWM call below is the whole fix
+        for widget in app.topLevelWidgets():
+            if widget.isWindow():
+                _windows_dark_titlebar(widget, dark)
+
     def apply_theme(self, name, save=True):
         """A theme lands everywhere at once and nothing has to be
         restarted for it: the window's sheet, the widgets that keep one
@@ -58270,6 +58368,7 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         self.refresh_page_look()
         self.refresh_a11y()
         self._restyle_widgets()
+        self.restyle_window_frames()
         # force-dark and a light theme cannot both be right
         self.apply_web_attributes()
         payload = json.dumps(json.dumps(self.own_page_theme(name)))
@@ -66612,6 +66711,11 @@ def main():
         win.showMinimized()
     else:
         win.show()
+    # the title bar is Windows', and it is drawn light until Windows is
+    # told the theme is dark -- which can only be said once the window
+    # exists, i.e. after show()
+    if not headless:
+        win.restyle_window_frames()
     # how long all of that took, for the line in Settings. Taken at the
     # moment the window is up, which is the moment he can use it.
     win._startup_took = time.monotonic() - _STARTED_AT
