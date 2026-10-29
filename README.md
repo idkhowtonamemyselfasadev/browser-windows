@@ -68,6 +68,12 @@ That is the whole wall. SmartScreen is saying it does not recognise the publishe
 not that it found anything wrong in the file. It says the same about the first build
 of any program nobody has paid to sign.
 
+**What it costs on disk.** The download is one file of about 125 MB, and
+installed it takes **425 MB** — most of that is QtWebEngine, the browser
+engine itself, which is 54.7 MB of the download compressed and cannot be
+left out. Your own data (`%LOCALAPPDATA%\browser`) starts at a few
+hundred KB and grows with your history and bookmarks.
+
 Then the installer runs. It:
 
 - installs into `%LOCALAPPDATA%\Programs\Browser`, **for your user only — no admin prompt**;
