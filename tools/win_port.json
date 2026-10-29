@@ -91,6 +91,7 @@
     "test_deadtab.py",
     "test_desk.py",
     "test_dev.py",
+    "test_sidebar.py",
     "test_devtools.py",
     "test_downloads.py",
     "test_external.py",

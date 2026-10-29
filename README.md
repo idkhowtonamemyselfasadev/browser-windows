@@ -144,6 +144,12 @@ forward rather than opening a second one.
 ### Browsing
 
 - **Tabs and tab groups** — Chrome-style group pills, collapsible, colour-coded
+- **A relocatable tab strip** — along the top, below the page, or **down either
+  side as a sidebar** (`F9`): the tabs become a list of rows with the titles
+  readable rather than thirty slivers of a favicon, the group pills folding in
+  place, drag to reorder. `Shift+F9` folds it to 46 pixels of icons, and the
+  width is a splitter handle. Along the top it can also run in up to four rows
+  rather than scrolling. Settings → Tabs has a four-card picker for it
 - **A side panel** (`Ctrl+Shift+Y`) that holds any site beside the page —
   Discord, Amazon Music, Claude, Twitch chat — as a real view on the same
   cookie jar, so it is already logged in
@@ -348,6 +354,7 @@ machine and need nothing set up in Windows.
 | `Ctrl+,` | Settings |
 | `Ctrl+` `+` / `Ctrl+-` | Zoom the page in / out (also `Ctrl`+wheel) |
 | `Ctrl+0` | Back to the zoom set in Settings |
+| `F9` / `Shift+F9` | Tabs down the side / fold the sidebar to icons |
 | `F11` | Fullscreen |
 | `F12` / `Ctrl+Shift+I` | Developer tools |
 | `Ctrl+Q` | Quit |
