@@ -16,8 +16,10 @@ It cost a real defect. `theme_color("base")` dimmed a sleeping tab, and
 there is no "base" anywhere in THEME_SOURCE, so on all 116 themes the
 veil was #000000 at alpha 110. On Mocha the background is black anyway,
 which is where it was looked at; on the 30 light themes a sleeping tab
-was veiled in black. Found upstream on 2026-10-29 while mirroring the
-tab strip into a vertical rail, and the same line was live here.
+was veiled in black. Found here on 2026-10-29 while mirroring the tab
+strip into a vertical rail, and independently in the Windows edition
+the same day -- which is the best evidence either session had that it
+was real rather than a misreading.
 
 So: every token this file passes to theme_color as a literal must
 resolve. Checked against THEME_SOURCE and against every one of the 116
@@ -31,6 +33,7 @@ Needs Qt only to import browser.py; opens no window, keeps no data,
 writes nothing. Run with HOME pointed at a throwaway directory like
 everything else here.
 """
+import ast
 import collections
 import os
 import re
@@ -38,7 +41,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("BROWSER_NO_LIB_CHECK", "1")
@@ -57,11 +60,42 @@ def check(what, ok, detail=""):
 import browser as B  # noqa: E402  (after the environment is set)
 
 SRC = (REPO / "browser.py").read_text(encoding="utf-8")
-# only the literal calls: theme_color(token_variable) cannot be checked
-# from here, and pretending otherwise would be the same kind of guess
-# this file exists to stop.
-LITERAL = re.compile(r"theme_color\(\s*[\"']([A-Za-z0-9_]+)[\"']")
-USED = collections.Counter(LITERAL.findall(SRC))
+
+
+def literal_tokens(source):
+    """Every token handed to theme_color as a plain string, read out of
+    the tree.
+
+    Not a regex over the text, for the reason its sibling
+    test_bridgecalls gives for reading `class Bridge` the same way: a
+    comment is not a call. The line that explains the fix --
+
+        # theme_color("base") never found a palette entry and fell
+
+    -- matched the regex exactly as hard as the bug it describes did,
+    so the suite failed on the comment documenting the repair. A parsed
+    tree holds calls and not comments, and cannot make that mistake.
+
+    Only the literal calls either way: theme_color(token_variable)
+    cannot be checked from here, and pretending otherwise would be the
+    same kind of guess this file exists to stop.
+    """
+    out = collections.Counter()
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        fn = node.func
+        name = (fn.id if isinstance(fn, ast.Name)
+                else fn.attr if isinstance(fn, ast.Attribute) else "")
+        if name != "theme_color":
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            out[first.value] += 1
+    return out
+
+
+USED = literal_tokens(SRC)
 
 print("(1) every literal token resolves")
 check("there are tokens to check", len(USED) >= 8, len(USED))
@@ -87,8 +121,12 @@ resolves = gone in source or all(gone in B.theme_palette(n)
 check("...and the token that caused this would be caught", not resolves,
       "%r resolves after all, so it is the wrong fixture" % gone
       if resolves else "")
-check("...so nothing still asks for it",
-      not LITERAL.findall(SRC).count(gone), USED.get(gone, 0))
+check("...so nothing still asks for it", not USED.get(gone, 0),
+      USED.get(gone, 0))
+# and the trap that caught this suite on the way in, kept as a check:
+# the fix is explained in a comment that contains the call it replaced.
+check("...and a comment naming it is not read as a call",
+      'theme_color("%s")' % gone in SRC, "the fixture comment is gone")
 
 
 print()

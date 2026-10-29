@@ -37,6 +37,7 @@
     "test_wizard.py",
     "test_contrast.py",
     "test_themefix.py",
+    "test_bridgecalls.py",
     "test_vaultoff.py",
     "test_theme.py",
     "test_trust.py",
@@ -146,7 +147,9 @@
     "tests/harness.py",
     "# the same in both and never edited here; listed so a change there arrives",
     "LICENSE",
-    "icon.svg"
+    "icon.svg",
+    "test_themetokens.py",
+    "test_uistrings.py"
   ],
   "_edited_here_readme": [
     "Ported files this edition then changes, and why. Each one is a merge_file",
@@ -839,10 +842,8 @@
     "packaging/exe_main.py",
     "packaging/installer.iss",
     "test_windows.py",
-    "tests/test_bridgecalls.py",
     "tests/test_leakguard.py",
     "tests/test_portbase.py",
-    "tests/test_themetokens.py",
     "tests/test_workflow.py",
     "tools/port_map.py",
     "tools/runall.sh",

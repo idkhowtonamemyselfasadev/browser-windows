@@ -9,18 +9,25 @@ checked. The other is browser.py:
     player.html:203   bridge.playerQueue(...)      unguarded
     player.html:172   bridge.playerSubtitles(...)  guarded
 
-Neither method exists on the Bridge. The unguarded one threw
+Neither method existed on the Bridge. The unguarded one threw
 "bridge.playerQueue is not a function" on **every single open** of the
 player, and it looked fine because it was the LAST statement in its
 callback -- the two label assignments above it had already run, so the
 buttons read correctly and nothing was visibly wrong. Anything added
 below that line would have been dead with no symptom at all.
 
-That is the b68049e shape again, and it is the third time this family
-of bug has shipped in this edition: an orphan left behind by a design
-that moved on, where the only witness is a console nobody reads. Found
-upstream on 2026-10-29 (51ecdbe) and carried here; the guard is this
-file, so the next one fails a suite instead of shipping.
+The guarded one was worse in a quieter way: Subtitles is a *button*,
+so the page advertised a feature the browser could not do and clicking
+it did nothing at all. playerQueue was guarded on 2026-10-29 and
+playerSubtitles was given its Bridge method the same day, so the pin
+below is down to one entry.
+
+That is the b68049e shape again: an orphan left behind by a design that
+moved on, where the only witness is a console nobody reads. Written in
+the Windows edition, where the unguarded playerQueue was still live,
+and taken upstream because the class of bug is in shared code -- the
+nine pages and this file. The guard is this suite, so the next one
+fails a run instead of shipping.
 
 Two different verdicts, deliberately:
 
@@ -40,7 +47,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE
 
 # Methods the pages call that browser.py does not define, and which are
 # guarded so they fail silently rather than throwing. Each one is a
@@ -50,8 +57,6 @@ REPO = HERE.parent
 KNOWN_GAPS = {
     "playerQueue": "the playlist does not arrive this way any more -- "
                    "open_player injects window.__playerLoad(files)",
-    "playerSubtitles": "the \"Load subtitles from a file\" button is dead: "
-                       "no Bridge method and no file picker behind it",
 }
 
 fails = []
@@ -144,7 +149,7 @@ for name in missing:
 
 
 print()
-print("(4) the ones this edition had to add are present")
+print("(4) the ones a port has gone without before are present")
 # history.html needs these two and nothing static noticed when they were
 # absent: the page loaded, threw inside its own callback and drew no
 # rows. See a6cb6e3.
