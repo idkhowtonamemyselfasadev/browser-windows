@@ -180,7 +180,7 @@ the tabs twice and watching for the baseline. **Queued.**
 **The nine in-browser pages are cached by design** — `_panes[name]` is built on
 first use and reused after, so they stay resident. That is the trade this brief
 names: a pane that opens instantly against a renderer held for a page nobody is
-looking at. Cost not yet measured; both sides go to Tim rather than a unilateral
+looking at. Cost not yet measured; both sides go to him rather than a unilateral
 choice.
 
 **Firefox: NOT MEASURED.** Three harnesses, three implausible answers, and I
@@ -221,7 +221,7 @@ orphan branch with three commits, `git fetch` in the clone.
 **Status** FAIL — **Critical.** "Update available" at every launch for ever, and
 the button behind it cannot work.
 **Evidence** Reproduced twice in disposable repositories: run 1 count=3, run 2
-count=3, both ending in the same `fatal`. Deterministic. Tim's find, confirmed.
+count=3, both ending in the same `fatal`. Deterministic. His find, confirmed.
 **Suggested fix** `rev-list --count A..B` is not wrong, it is answering a
 different question — "commits reachable from B but not A", which for unrelated
 histories is all of them. Ask `git merge-base --is-ancestor` first and say
@@ -255,6 +255,115 @@ data in `%LOCALAPPDATA%\browser` stays put, because it does.
 **Actual uninstall behaviour on Windows: BLOCKED.**
 
 ---
+
+## W-L01 — his first name was on the public branch, in thirteen files
+
+Found by `server-71` after the baseline push, confirmed here independently:
+**13 files, 71 occurrences.** `RULES.md` says nothing of his ever reaches
+GitHub and names the name explicitly. It did.
+
+    test_forms.py 39 · win_port.json 5 · test_games.py 5 · QA-REPORT.md 4
+    theme_web.py 3 · test_winbranch.py 3 · test_block3.py 3
+    tests/test_leakguard.py 2 · test_dev.py 2 · test_desk.py 2
+    tests/harness.py 1 · test_keyboard.py 1 · test_bar.py 1
+
+Two of those sting. `theme_web.py` is **shipped source** — three comments
+naming him in a public repo with a deliberately anonymous handle. And
+`tests/test_leakguard.py`, the suite whose entire job is to say nothing of
+his is here, carried it twice.
+
+**The root cause is the same blind spot in two independent tools.** gitguard's
+`personal.txt` blocked his mail handle, two handles, the Strato box, the
+subnet, three plug MACs, `/home/<name>`, two monitors and three secrets — and
+the comment above the path rule even says the path *is* his name, so the name
+was known to matter and was blocked only **inside a path**. `win_port.json`'s
+own readme names the three strings it exists to keep out: home directory,
+subnet, mail handle. Not the name. Both tools guarded the path and neither
+guarded the word.
+
+**Fixed as substitutions, not hand-edits, because 10 of the 13 are
+`copy_files`.** A hand-edit trips the drift check and the next port brings the
+name straight back; a substitution makes `have == expect` by construction and
+keeps taking it out on every port. There was already a rule of exactly this
+shape for `/home/<name>`. 13 new rules name the *shapes* the name appears in —
+quoted fixture value, example mail address, the `otpauth://` account, the
+`icacls` grant, `<Name> Tester`, and the three prose lines in `theme_web.py`.
+59 replacements across 9 files, plus `tests/harness.py` on a second pass once
+the globs covered `tests/*.py`.
+
+**No rule spells it.** `{USER}` and `{User}` expand from the account in
+`joined()`, which also cleared the 5 hits in the manifest itself and the 3 in
+its markers. Three new markers assert `count: 0` for `\b{USER}\b` in
+`browser.py`, `*.html` and `theme_web.py`. 63 markers pass.
+
+**And the name gets no catch-all substitution, which is the point rather than
+an omission.** It is three letters and the prefix of ordinary English: a rule
+replacing a bare occurrence would rewrite `time`, `timer`, `timeout`,
+`timestamp`, `estimate` and `optimal` in every ported file. So the rules name
+the shapes, and `tests/test_leakguard.py`'s word-boundary check is what says
+the list is complete — a fourteenth shape fails the suite and gets a rule.
+
+### Two ways my own fix was wrong first
+
+**`Path.home().name` was the wrong source.** Every suite here is required to
+run with `HOME` pointed at a throwaway directory, so the derived name was the
+scratch folder's. Mine was called `wf2`, the string `wf2` appears in a fixture
+inside `test_leakguard.py` itself, and **the new check reported a leak that was
+its own test data.** It reads `pwd.getpwuid(os.getuid()).pw_name` now, which
+does not move when `HOME` does. Both the fix and the reason are in the file.
+
+**Then a substring test reported 86 of 118 files**, for the `time`/`estimate`
+reason above. That is the third check I have written today that fired for a
+reason other than the one it named. The command-line grep I confirmed the
+finding with had `\b` in it from the start; the check I wrote did not.
+
+### What this does not fix
+
+The name is already in public history: **48 commits, 40 of them carry it**,
+and the same is true of linux — 85 commits, 70 of them, back to 21 October.
+A fix at the tip cleans the tip. Rewriting two public repos is his decision
+and it is with him with the numbers; it is not a thing to do on a peer message.
+`browser-android` is the only clean baseline of the four, because it was
+scrubbed before its first commit — which is the whole argument, and the only
+moment the cost is zero.
+
+Upstream still carries it: linux's `origin/main` has the identical counts, 39
+in `test_forms.py`, 3 in `theme_web.py`, 1 each in `tests/harness.py` and
+`test_keyboard.py`. The substitutions are this edition's shield, not the fix.
+
+### And the sweep caught the report about the leak
+
+`gitguard/sweep.py` arrived while this was being written — the resting-state
+check, because `pre-commit` scans staged content and `pre-push` walks the
+pushed commits, and **neither answers "is this repository clean"**. First run
+on this tree, after the 13 files were done:
+
+    gitguard sweep: 23 pattern(s) from personal.txt
+      \btim\b   QA-REPORT.md   1
+
+One occurrence, in the paragraph of this report explaining the leak. Fixed,
+and worth leaving written down: a hand-grep said zero because I ran it before
+writing the section, and the only thing that caught it was a check that looks
+at the tree as it rests rather than at what is being added.
+
+The hook refresh had the same shape. `gitguard`'s README says to copy
+`template/hooks/pre-commit` into `.git/hooks/` — which in this repo replaces
+the **dispatcher** that runs both `10-gitguard` and `20-pages`, silently
+dropping the pages check. The dispatcher's own comment predicts it by name.
+The template's `pre-commit` is byte-identical to this repo's `10-gitguard`,
+so the only new file was `pre-push`; it went into its own slot and the chain
+is intact — `10-gitguard`, `20-pages`, dispatcher unchanged.
+
+### A port is already blocked, and not by this
+
+Measured while proving the substitutions leave no drift: of 115 `copy_files`
+compared against the base plus substitutions, **6 drift — and all 6 were
+already drifting at `HEAD`** (`settings.html`, `history.html`, `player.html`,
+`privacy.py`, `test_dev.py`, `test_media2.py`). Today's edits introduced
+**zero**. Those six are the stale-base problem from the other direction: the
+pages came through `pages.py port` and the base is a pre-rewrite twin 83
+commits behind `origin/main`, so a port run today would refuse regardless of
+anything here. `win_port.py --check` already says which commit to repoint at.
 
 ## Bugs found and fixed during this pass
 
@@ -544,7 +653,7 @@ the dispatcher in one edit. Tint first and it is `dev_tool` again — a call
 that goes green and changes no pixel. Normalise first and check (6) flips the
 table from *"cold, nothing to swap"* to a failure, which is what it did.
 
-`READER_TOOLS` is still deliberately cold and still Tim's: the suite now
+`READER_TOOLS` is still deliberately cold and still his call: the suite now
 carries the three pen literals in a `PENDING_AT` list that fails if an entry
 stops matching anything, so an undecided item cannot quietly become invisible
 the way an exemption can.
@@ -743,7 +852,7 @@ exact shape this report keeps finding. Each needs a decision first:
                                 visited links; arguably not ours to theme
 
 The first three are the browser speaking and want normalising to tokens the way
-linux did the other five. The last two are product calls, so they go to Tim
+linux did the other five. The last two are product calls, so they go to him
 rather than being decided here.
 
 **W-B09 detail, and a correction I got wrong in the safe direction.** What I

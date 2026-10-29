@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Nothing of Tim's is in this tree, and a port cannot put it back.
+"""Nothing of his is in this tree, and a port cannot put it back.
 
 Three different things, and the third is the one worth having.
 
@@ -39,6 +39,7 @@ Static, in-process, no Qt, no network, writes nothing. Runs from
 anywhere.
 """
 import importlib.util
+import os
 import json
 import re
 import sys
@@ -87,9 +88,30 @@ check("the manifest's files are all here", not absent, absent or len(FILES))
 
 # Exactly browser-pages/pages.json's "leaks" list, deliberately: one of
 # the two tools noticing is not enough, and this one sees browser.py.
-# Built, never written out -- see the docstring. Exactly the three
-# strings browser-pages/pages.json calls a leak.
-HOME = "/home/" + "tim"
+# Built, never written out -- see the docstring.
+#
+# His login comes from the account this runs under rather than being
+# typed: splitting the needle into "/home/" + "<name>" defeats a
+# pattern looking for the PATH, but the second half is still the name
+# in clear text, and on 2026-10-29 this file was one of thirteen in
+# this edition carrying it -- the suite whose whole job is to say
+# nothing of his is here, carrying it twice. Read off the account, it
+# costs nothing, spells nothing, and makes the suite describe whoever
+# runs it instead of one person.
+#
+# NOT Path.home().name, which was the first attempt and failed in a way
+# worth keeping: every suite here is required to run with HOME pointed
+# at a throwaway directory, so Path.home().name is the name of that
+# directory. Mine was called "wf2", "wf2" appears in a fixture string
+# in this very file, and the new check reported a leak that was its own
+# test data. The account id does not move when HOME does.
+try:
+    import pwd
+    WHO = pwd.getpwuid(os.getuid()).pw_name
+except Exception:                                   # noqa: BLE001
+    import getpass
+    WHO = getpass.getuser()
+HOME = "/home/" + WHO
 LAN = "192.168." + "2."
 MAIL = "magic" + "wing"
 HIS = [("his home directory", HOME),
@@ -98,6 +120,24 @@ HIS = [("his home directory", HOME),
 for what, needle in HIS:
     hits = sorted(n for n, text in FILES.items() if needle in text)
     check("no file writes %s" % what, not hits, hits or "%d files" % len(FILES))
+
+# His NAME is asked separately and with a word boundary, because it is
+# three letters and the prefix of ordinary English: a substring test
+# reports time, timer, timeout, timestamp, estimate and optimal in 86
+# of these files, which is what the first version of this check did.
+#
+# It also does NOT get a catch-all substitution the way the three above
+# do, and that asymmetry is the point rather than an omission. A rule
+# replacing a bare "<name>" would rewrite every one of those words in
+# every ported file. So the rules in win_port.json name the shapes the
+# name actually appears in -- quoted as a fixture value, in an example
+# mail address, in prose -- and this check is what says the list is
+# complete. If a port brings in a fourteenth shape, this fails and the
+# rule gets written; nothing silently passes.
+BARE = re.compile(r"\b" + re.escape(WHO) + r"\b")
+named = sorted(n for n, text in FILES.items() if BARE.search(text))
+check("no file writes his name on its own", not named,
+      named or "%d files" % len(FILES))
 
 
 print()

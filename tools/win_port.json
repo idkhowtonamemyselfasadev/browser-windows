@@ -179,7 +179,9 @@
     "test_look2 pinned the terminal look's `monospace` fallback and failed here",
     "for exactly that reason.",
     "",
-    "A 'find' or 'replace', and a marker 'pattern', may be a LIST of fragments instead of a string; win_port.py joins them with nothing between. That is not decoration. The strings these rules exist to keep out are his home directory, the subnet his own machines sit on and his mail handle, and a rule that spelled one out would put it in this public repo -- which is the leak, and which gitguard's pre-commit refuses, correctly. Splitting the needle is how the guard names what it forbids without carrying it."
+    "A 'find' or 'replace', and a marker 'pattern', may be a LIST of fragments instead of a string; win_port.py joins them with nothing between. That is not decoration. The strings these rules exist to keep out are his home directory, the subnet his own machines sit on and his mail handle, and a rule that spelled one out would put it in this public repo -- which is the leak, and which gitguard's pre-commit refuses, correctly. Splitting the needle is how the guard names what it forbids without carrying it.",
+    "",
+    "2026-10-29: thirteen files in this edition carried his first NAME, ten of them copied straight from Linux, one of them shipped source (theme_web.py) and two of them inside the suite whose whole job is to say nothing of his is here. The three strings this file set out to keep out were his home directory, his subnet and his mail handle -- the bare name was not among them, which is the same blind spot gitguard's own personal.txt had. The rules below close it for the copied files, which is the only place this edition can: the name is upstream's to remove from upstream, and until it does, a port keeps bringing it back and these keep taking it out. No rule spells it: {USER} and {User} expand from the account the port runs under."
   ],
   "substitutions": [
     {
@@ -339,7 +341,7 @@
       ],
       "find": [
         "placeholder=\"/home/",
-        "tim/Notes\""
+        "{USER}/Notes\""
       ],
       "replace": "placeholder=\"C:\\Users\\You\\Notes\"",
       "_min_why": "zero is the normal reading: the merge carries our side, and whether this fires depends on which of the two tools last wrote the page. The marker below is what enforces the result.",
@@ -423,11 +425,167 @@
       ],
       "find": [
         "/home/",
-        "tim"
+        "{USER}"
       ],
       "replace": "/home/you",
       "_min_why": "catch-all; zero is the healthy reading",
       "min": 0
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "{USER}+shop@example.com",
+      "replace": "you+shop@example.com",
+      "min": 0,
+      "why": "his mail handle as an alias fixture; the + form has to go before the plain one or the plain rule eats its prefix",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "{USER}@example.com",
+      "replace": "you@example.com",
+      "min": 0,
+      "why": "his name in the suites' example addresses",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "\"{USER}\"",
+      "replace": "\"you\"",
+      "min": 0,
+      "why": "his login as a quoted fixture value: vault usernames, the chat handle, USERNAME, the auth user, a menu label, a regex group",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "hello {USER}",
+      "replace": "hello you",
+      "min": 0,
+      "why": "a chat line fixture that greets him by name",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": ":{USER}?secret",
+      "replace": ":you?secret",
+      "min": 0,
+      "why": "the account in an otpauth:// URL fixture",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "{USER}:F",
+      "replace": "you:F",
+      "min": 0,
+      "why": "the icacls grant the Windows branch test asserts",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "{User} Tester",
+      "replace": "You Tester",
+      "min": 0,
+      "why": "the autofill profile's full name; before the bare quoted form",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "\"{User}\"",
+      "replace": "\"You\"",
+      "min": 0,
+      "why": "the card-holder name, and the same value in a profile dict",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "'{User}'",
+      "replace": "'You'",
+      "min": 0,
+      "why": "the same, typed into a draft by the forms suite",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "{User} already knows",
+      "replace": "you already know",
+      "min": 0,
+      "why": "prose in the keyboard suite naming him",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "the \"washed out, too dark\" {User} sees",
+      "replace": "the \"washed out, too dark\" he sees",
+      "min": 0,
+      "why": "prose in shipped source, theme_web.py",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "the light-grey-on-white {User} was getting",
+      "replace": "the light-grey-on-white he was getting",
+      "min": 0,
+      "why": "prose in shipped source, theme_web.py",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "files": [
+        "test_*.py",
+        "theme_web.py",
+        "tests/*.py"
+      ],
+      "find": "one {User} can watch happen",
+      "replace": "one he can watch happen",
+      "min": 0,
+      "why": "prose in shipped source, theme_web.py",
+      "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
     }
   ],
   "_markers_readme": [
@@ -714,7 +872,7 @@
       "name": "browser.py never writes his home directory",
       "pattern": [
         "/home/",
-        "tim"
+        "{USER}"
       ],
       "count": 0
     },
@@ -723,7 +881,7 @@
       "name": "no shipped page writes his home directory",
       "pattern": [
         "/home/",
-        "tim"
+        "{USER}"
       ],
       "count": 0
     },
@@ -732,7 +890,7 @@
       "name": "nor does any suite",
       "pattern": [
         "/home/",
-        "tim"
+        "{USER}"
       ],
       "count": 0
     },
@@ -813,6 +971,24 @@
       "name": "a moved Downloads on an unmounted drive is the same absent folder",
       "pattern": "Explorer lets anyone move that onto another drive",
       "count": 1
+    },
+    {
+      "file": "browser.py",
+      "name": "browser.py never writes his name either",
+      "pattern": "\\b{USER}\\b",
+      "count": 0
+    },
+    {
+      "file": "*.html",
+      "name": "nor does any shipped page",
+      "pattern": "\\b{USER}\\b",
+      "count": 0
+    },
+    {
+      "file": "theme_web.py",
+      "name": "nor the stylesheet source, which carried three",
+      "pattern": "\\b{USER}\\b",
+      "count": 0
     }
   ],
   "_hand_regions_readme": [

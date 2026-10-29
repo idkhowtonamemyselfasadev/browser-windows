@@ -77,19 +77,48 @@ def show(repo, rev, path):
     return out.stdout
 
 
+#: His login name, taken from the account this runs under rather than
+#: written down. {USER} and {User} in a manifest rule expand to it.
+#:
+#: The fragment trick below was not enough. A rule could say
+#: ["/home/", "<login>"] and defeat a pattern looking for the PATH --
+#: but the second fragment is still the name in clear text, and on
+#: 2026-10-29 gitguard grew a rule for the bare name, which is the
+#: right rule. Thirteen files in this edition carried it, five of them
+#: this manifest. A placeholder carries no name at all, and it is also
+#: simply more correct: the suites then describe whoever runs them.
+#: Read off the account, NOT Path.home().name: everything here runs
+#: with HOME pointed at a throwaway directory, so that would be the
+#: scratch folder's name. See tests/test_leakguard.py, where exactly
+#: that reported a leak that was its own test data.
+try:
+    import pwd
+    USER_NAME = pwd.getpwuid(os.getuid()).pw_name
+except Exception:                                   # noqa: BLE001
+    import getpass
+    USER_NAME = getpass.getuser()
+
+
+def expand(text):
+    """{USER} and {User} filled in, so no rule has to spell the name."""
+    return (text.replace("{USER}", USER_NAME)
+                .replace("{User}", USER_NAME.capitalize()))
+
+
 def joined(value):
     """A manifest string, which may be written as a list of fragments.
 
     A guard has to name the thing it forbids, and the things forbidden
-    here are his home directory, the subnet his machines sit on and his
-    mail handle. Written out, this file would be the leak it exists to
-    prevent -- and gitguard refuses the commit, correctly. So a rule may
-    spell its needle as ["/home/", "<his login>"] and it is joined here.
-    Nothing is interpreted: the pieces are concatenated exactly.
+    here are his home directory, the subnet his machines sit on, his
+    mail handle and his own name. Written out, this file would be the
+    leak it exists to prevent -- and gitguard refuses the commit,
+    correctly. So a rule may spell its needle as ["/home/", "{USER}"]:
+    the pieces are concatenated exactly, and only {USER} / {User} are
+    interpreted, by expand() above.
     """
     if isinstance(value, list):
-        return "".join(value)
-    return value
+        value = "".join(value)
+    return expand(value)
 
 
 def matches(name, patterns):

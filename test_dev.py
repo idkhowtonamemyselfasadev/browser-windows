@@ -294,10 +294,10 @@ check("...and JavaScript is back afterwards",
       js(view, "typeof localStorage"))
 
 print("\n(6) the workbench")
-found = win.regex_test(r"(\w+)@(\w+)\.com", "write to tim@example.com now")
+found = win.regex_test(r"(\w+)@(\w+)\.com", "write to you@example.com now")
 check("a pattern matches", found["ok"] and found["count"] == 1, found)
 check("...with its groups",
-      found["matches"][0]["groups"] == ["tim", "example"], found)
+      found["matches"][0]["groups"] == ["you", "example"], found)
 bad = win.regex_test("(unclosed", "x")
 check("a pattern that does not compile says so",
       bad["ok"] is False and bad["error"], bad)
