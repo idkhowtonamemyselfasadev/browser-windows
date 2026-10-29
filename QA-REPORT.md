@@ -870,7 +870,39 @@ call `js()` nowhere and have some other cause.
 
 ## Suite status
 
-101 suites. Four full runs earlier today, and the red set had **zero overlap** between any
+**The baseline run, 2026-10-29 evening: 99 suites, 4 red, every one explained.**
+
+| Suite | Reproduced | Cause | Whose |
+|---|---|---|---|
+| `test_toolbar` | **3/3 in isolation** | asserts `right==0` / `==28`, which were `_sync_acct`'s two removed guesses | fixed upstream |
+| `test_reading2` | 2/2 | asserts the literal `cba6f7`, moved to `accentLt` by the off-palette work | fixed upstream |
+| `test_screenshare` | every run today | `getDisplayMedia` has no screen under `offscreen`; identical at `9096244` | pre-dates all of this |
+| `test_favorites` | **0/3 in isolation** | exit 139 inside the full run only; see below | unexplained |
+
+**`test_toolbar` is the test pinning the bug, and here is the proof rather than
+the claim.** Its two checks demanded `textMargins().right() == 0` with the star
+hidden and `== 28` with it shown. Measured now:
+
+    star shown     right=52   barcopy at 646 (w22)   text ends 648
+    star hidden    right=26   barcopy at 672 (w22)   text ends 674
+    star back      right=52
+
+The star is 24 wide, so it frees exactly 26, and takes exactly 26 back. The bar
+is 700 wide. **`right == 0` with the star hidden would run the address straight
+under `barcopy`**, and `== 28` with the star shown would run it under both. The
+two numbers were `_sync_acct`'s guesses, which is what W-B13 removed — so the
+suite was asserting a bar that paints over its own buttons.
+
+Upstream has already rewritten it as a *relation* instead of two constants —
+the margin gives up exactly the star's room, takes it back, and what is left
+still clears whatever else is in there — plus a check I did not have:
+*"...but keeps the room the other buttons still need"*. Both reds are the same
+shape and **one port run closes both**, which is why neither is hand-edited
+here: `test_toolbar.py` and `test_reading2.py` are both in `copy_files`, and a
+newer copy trips the drift check exactly as a hand-edit would.
+
+
+99 suites — 87 at the root and 12 under `tests/` — plus two invariant blocks, which is where the "101" in an earlier draft of this report came from. Four full runs earlier today, and the red set had **zero overlap** between any
 two of them:
 
     run 1   test_dev, test_themefix                        both pass alone
