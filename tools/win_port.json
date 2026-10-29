@@ -826,16 +826,25 @@
     "Bridge._update_without_clone (the zip body, not the Linux sentence) and Bridge._zip_update",
     "Browser.updateAvailable / updateShaKnown / zipProbed, their three connects, Browser._adopt_update_sha, Browser._note_zip_probed, Browser._check_zip_update, and the thread the no-.git branch of Browser._check_updates starts"
   ],
-  "_win_only_files_readme": "Files that exist only in this edition and must never be clobbered by a port. CHANGELOG.md is here because each edition tells its own story: the Linux changelog names Linux commits and Linux-only work, and merging the two would read as neither. README.md is NOT here - it is a merge_file, see edited_here.",
+  "_win_only_files_readme": "Files that exist only in this edition and must never be clobbered by a port. CHANGELOG.md is here because each edition tells its own story: the Linux changelog names Linux commits and Linux-only work, and merging the two would read as neither. README.md is NOT here - it is a merge_file, see edited_here. The installer lives here too: packaging/, the build workflow, VERSION, and the three suites under tests/ that only make sense for this edition -- the port base, the leak guard and the PowerShell lint. tests/test_workflow.py checks that every name on this list is still on disk, because nothing in win_port.py reads it and a list nobody checks is a list that goes stale.",
   "win_only_files": [
+    ".github/workflows/build-exe.yml",
+    ".gitignore",
+    "CHANGELOG.md",
+    "VERSION",
     "icon.ico",
     "install.bat",
+    "packaging/RELEASE_NOTES.md",
+    "packaging/exe_main.py",
+    "packaging/installer.iss",
     "test_windows.py",
-    "tools/win_port.py",
-    "tools/win_port.json",
+    "tests/test_leakguard.py",
+    "tests/test_portbase.py",
+    "tests/test_workflow.py",
+    "tools/port_map.py",
     "tools/runall.sh",
-    "CHANGELOG.md",
-    ".gitignore"
+    "tools/win_port.json",
+    "tools/win_port.py"
   ],
   "_linux_only_files_readme": "Files in ~/browser that deliberately do not come across, and why.",
   "linux_only_files": {
