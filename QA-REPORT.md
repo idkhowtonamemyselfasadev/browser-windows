@@ -183,10 +183,19 @@ names: a pane that opens instantly against a renderer held for a page nobody is
 looking at. Cost not yet measured; both sides go to Tim rather than a unilateral
 choice.
 
-**Firefox is absent on purpose.** My first harness reported 196.1 MB at 1 tab and
-196.0 MB at 10 — identical totals for ten times the tabs, which is not a lean
-browser but a process tree I failed to walk. Firefox names its children
-`-contentproc`, not `--type=`. Rerunning; no number is better than a wrong one.
+**Firefox: NOT MEASURED.** Three harnesses, three implausible answers, and I
+stopped rather than publish a fourth:
+
+    --type= classifier      1 tab 196.1 MB, 10 tabs 196.0 MB, 3 processes
+    profile-path pgrep      1/10/50 tabs 174.3 / 175.7 / 174.5 MB, 2 processes
+    parent + child walk     1 tab 193.2 MB, 3 processes, 0 helpers
+
+Flat across 1 and 50 tabs every time, which is not a browser, it is a process
+tree I kept failing to walk: Firefox's content processes carry
+`-contentproc -childID N` rather than the profile path, and the parent that does
+name the profile is not where `xvfb-run` leaves it. The brief says Chrome **or**
+Firefox, so Section 12 goes in with Chrome. Better a stated gap than a number I
+would have to defend.
 
 **BLOCKED** Speedometer 3 / JetStream 2 / MotionMark, battery, scroll smoothness,
 input latency, and **first-launch RAM on Windows**. The ratios above should carry
@@ -260,7 +269,28 @@ a forgiving fallback returning a plausible wrong value.
 | W-B04 | 17 UI strings the pages ask for and the table never had, including `micTestTitle` vs `mictestTitle` — one capital apart, so the browser *had* the string and the page could not find it. `translateLang` defaults to `de`, so the microphone page was English **for the default user** | Medium | fixed |
 | W-B05 | `settings.html:4510` calls `refreshSettings()`, which is defined in `start.html`. Seven Appearance buttons do their work and never refresh the page | Medium | **OPEN — upstream** |
 | W-B06 | `#11111b` on `mictest.html:25`, the mic meter track, is not in `THEME_SOURCE`, so it stays near-black on all 116 themes | Low | **OPEN — upstream** |
+| W-B08 | `download_dir(create=True)` creates the folder the user *chose* and returns the **default** without creating it. On a machine with no `~/Downloads`, it hands back a path that does not exist — and the docstring's whole point is that `create=True` conjures the folder up | Medium | **OPEN — upstream** |
+| W-B09 | `pretty_url()`'s `xn--` branch is dead — `QUrl.host()` already decodes, so the test is never true — and its comment credits decoding with the homograph protection when decoding is the hazard. **Not a security hole here:** `lookalike_warning()` is wired to the address bar and fires on all three attacks | Low | **OPEN — upstream** |
 | W-B07 | Settings → Performance offers *"Sleep background tabs before the machine swaps"* with the hint *"Reads the kernel's own memory-pressure figure (PSI)"*. Windows has no PSI and no `/proc`, so that half can never fire — the switch goes on and the timer runs for nothing | Medium | **OPEN — upstream** |
+
+**W-B09 detail**, because a finding that says *"not a security hole"* needs its
+evidence as much as one that says it is. The decoded host really does read as the
+real domain — `pretty_url("https://xn--pple-43d.com/login")` returns
+`https://аpple.com/login` — so the dead branch and its backwards comment are real.
+What makes it Low rather than High is that the protection exists elsewhere and
+works:
+
+    xn--pple-43d.com    host аpple.com   → lookalike_warning 'mixed:аpple'
+    xn--80ak6aa92e.com  host аррӏе.com   → 'script:аррӏе.com'
+    xn--pypal-4ve.com   host pаypal.com  → 'mixed:pаypal'
+    apple.com                            → ''  (quiet, correctly)
+    paypal.com                           → ''  (quiet, correctly)
+
+`lookalike_warning()` (browser.py:1975) does mixed-script detection, a
+CONFUSABLES fold against a `WELL_KNOWN_HOSTS` list and a Cyrillic/Greek
+catch-all, and `browser.py:40360` puts `barLookalike` in the address bar when it
+fires. I had this written up as a High before I checked whether the user was
+warned.
 
 **W-B05 detail**, because of how quiet it is: `bridge.appearanceAction` *exists*, so
 the theme really is saved, exported, starred or reset. Then the callback throws
