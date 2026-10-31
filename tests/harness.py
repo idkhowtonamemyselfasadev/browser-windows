@@ -15,46 +15,30 @@ ROOT = os.path.dirname(HERE)                 # the browser itself
 # at the same time used to share this and wipe each other's data
 # half-way through, which shows up as failures in whichever run lost the
 # race rather than as anything to do with the code under test
-DATA = os.path.join(tempfile.gettempdir(),
-                    "browser-pwtest-%d" % os.getpid())
+sys.path.insert(0, ROOT)
+import tmpscratch  # noqa: E402
+
+# Swept for on the way in, which is the half that was missing: atexit
+# does not run when a process dies by a signal or calls os._exit, and
+# 19 suites end with os._exit to dodge a Qt teardown segfault. So the
+# runs most likely to leak were exactly the ones that had opted out of
+# the only mechanism that would have tidied up. The run that made the
+# mess cannot be relied on to clear it, so the next one does.
+DATA = tmpscratch.claim("browser-pwtest-")
 
 
 def _tidy_scratch():
-    """Take this run's scratch directory away when the process ends.
+    """This run's own directory, on the way out.
 
-    Why this is here at all: every run left its directory behind, and
-    a profile with a cache in it is 70-80 MB. After a few hundred runs
-    /tmp was full, and what that looks like is not "no space left" --
-    it is the last few tests of a suite segfaulting and timing out,
-    because a browser that cannot write its profile dies in a way that
-    looks like a bug in whatever it was doing.
-
-    Anything older than a day from a run that is no longer there goes
-    with it, so a suite that was killed does not leave its own behind.
+    The sweep of OTHER runs' leavings lives in tmpscratch and happens
+    at STARTUP now. It used to be here, and it asked the age before the
+    liveness: it skipped anything under a day old and only then checked
+    whether the process still existed. So the age did the deciding, the
+    pid check was never reached for anything from the same day, and a
+    day of this suite's own output is gigabytes. Liveness decides now,
+    and it decides in one place rather than two.
     """
     shutil.rmtree(DATA, ignore_errors=True)
-    parent = tempfile.gettempdir()
-    now = time.time()
-    try:
-        names = os.listdir(parent)
-    except OSError:
-        return
-    for name in names:
-        if not name.startswith("browser-pwtest-"):
-            continue
-        path = os.path.join(parent, name)
-        try:
-            if now - os.path.getmtime(path) < 86400:
-                continue
-            pid = int(name.rsplit("-", 1)[-1])
-        except (OSError, ValueError):
-            continue
-        try:
-            os.kill(pid, 0)          # still running: leave it alone
-        except ProcessLookupError:
-            shutil.rmtree(path, ignore_errors=True)
-        except OSError:
-            continue
 
 
 atexit.register(_tidy_scratch)
@@ -181,7 +165,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     #: paths under this prefix ask for a basic-auth login, and only
     #: this one is accepted. A browser has no way to test its own
     #: http-auth dialog without a server that asks for one.
-    auth_user = "you"
+    auth_user = "ada"
     auth_password = "letmein"
 
     def _auth_ok(self):
@@ -283,8 +267,47 @@ def wait_for(fn, timeout=8000, step=50):
     return False
 
 
+#: how long js() waits for the page before it gives up and says so
+JS_TIMEOUT_MS = 5000
+
+
 def js(view, code, world=None):
-    """Run JS and return the value (blocking)."""
+    """Run JS and return the value (blocking).
+
+    A TIMEOUT IS NOT A VALUE, and this used to answer `None` for both
+    "the page said null" and "the page never answered". Those are not
+    the same thing, and a suite cannot tell them apart afterwards:
+
+        check("...and the page is near where it was",
+              (js("window.scrollY|0", MAIN) or 0) >= 200,
+              js("window.scrollY|0", MAIN))
+
+    `or 0` turns "I never heard back" into a confident zero. Five runs
+    of exactly that line on a quiet machine, reported by
+    browser-windows:
+
+        run 3  FAIL  ...and the page is near where it was  <240>
+        run 5  ok    ...and the page is near where it was  <0>
+
+    Two verdicts out of five contradicting the evidence printed beside
+    them, in opposite directions. Run 5 is the one that matters: a red
+    check that is wrong gets investigated, and **a green check that
+    proves nothing is never looked at again**.
+
+    There are 495 check() verdicts across these suites whose condition
+    reads a js() value, 77 of them coercing with `or`. Every one was
+    free to treat silence as a measurement.
+
+    So silence raises. A suite that dies saying "js() timed out" is
+    telling the truth; one that says "ok, scroll was 0" is not.
+
+    Note what this does NOT fix. The example above asks the page twice
+    -- once for the condition and once for the detail -- and the value
+    can change between them, which is why run 3 failed while printing
+    240. That is a caller bug and it needs the caller to measure once
+    and assert on the thing it measured. Raising here only stops
+    silence being mistaken for data.
+    """
     box = {}
     loop = QEventLoop()
 
@@ -295,9 +318,13 @@ def js(view, code, world=None):
         view.page().runJavaScript(code, done)
     else:
         view.page().runJavaScript(code, world, done)
-    QTimer.singleShot(5000, loop.quit)
+    QTimer.singleShot(JS_TIMEOUT_MS, loop.quit)
     loop.exec()
-    return box.get("v")
+    if "v" not in box:
+        raise AssertionError(
+            "js() timed out after %d ms, so the answer below is not a "
+            "measurement: %s" % (JS_TIMEOUT_MS, str(code)[:120]))
+    return box["v"]
 
 
 def load(view, url):

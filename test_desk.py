@@ -46,7 +46,7 @@ PAGES = {
       </article>
       <nav>menu junk</nav><footer>footer junk</footer>
       <table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>
-      <a href="mailto:you@example.com">mail</a>
+      <a href="mailto:ada@example.com">mail</a>
       <p>numbers: 12, 7.5 and 1.234,50</p>""",
     "/video": "<title>Vid</title><video id=v src='/x.mp4'></video>",
     "/block": "<title>Block</title><p>blocked?</p>",
@@ -152,11 +152,11 @@ desk.delete_todo(desk.todos()[0]["id"])
 check("and one can be deleted", desk.todos() == [])
 
 print("\n(4) snippets, collections and clips")
-desk.set_snippet(";ip", "192.168.1.10")
-check("a snippet is kept", desk.expand(";ip") == "192.168.1.10")
+desk.set_snippet(";ip", "192.0.2.10")
+check("a snippet is kept", desk.expand(";ip") == "192.0.2.10")
 check("and listed", ";ip" in desk.snippets())
 check("an empty one takes it off", ";ip" not in desk.set_snippet(";ip", ""))
-desk.set_snippet(";ip", "192.168.1.10")
+desk.set_snippet(";ip", "192.0.2.10")
 desk.add_to_collection("Mods", "Sodium", "https://modrinth.com/mod/sodium")
 check("a collection is a Markdown list",
       desk.collection("Mods").startswith("- [Sodium](https://"),
@@ -253,7 +253,7 @@ js(field, """(function(){var t=document.getElementById('t');
  t.dispatchEvent(new KeyboardEvent('keyup',{key:' ',bubbles:true}));})()""")
 H.spin(300)
 check("typing the key puts the text in",
-      "192.168.1.10" in str(js(field, "document.getElementById('t').value")),
+      "192.0.2.10" in str(js(field, "document.getElementById('t').value")),
       js(field, "document.getElementById('t').value"))
 js(field, """(function(){var t=document.getElementById('t');
  t.value='plain text '; t.setSelectionRange(11,11);
@@ -339,7 +339,7 @@ check("every link is listed",
       any(r["url"] == "https://gnu.org/x" for r in out.get("links", [])),
       out.get("links"))
 check("and every email address",
-      "you@example.com" in out.get("mails", []), out.get("mails"))
+      "ada@example.com" in out.get("mails", []), out.get("mails"))
 got.clear()
 win.desk_tool("pagelists", view=rich, then=got.append)
 H.wait_for(lambda: got, 4000)

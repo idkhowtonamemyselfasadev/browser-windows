@@ -294,10 +294,10 @@ check("...and JavaScript is back afterwards",
       js(view, "typeof localStorage"))
 
 print("\n(6) the workbench")
-found = win.regex_test(r"(\w+)@(\w+)\.com", "write to you@example.com now")
+found = win.regex_test(r"(\w+)@(\w+)\.com", "write to ada@example.com now")
 check("a pattern matches", found["ok"] and found["count"] == 1, found)
 check("...with its groups",
-      found["matches"][0]["groups"] == ["you", "example"], found)
+      found["matches"][0]["groups"] == ["ada", "example"], found)
 bad = win.regex_test("(unclosed", "x")
 check("a pattern that does not compile says so",
       bad["ok"] is False and bad["error"], bad)
@@ -510,13 +510,13 @@ check("...and each is a chrome:// address",
 check("the flags are his to set",
       win.set_flags("--disable-gpu\n--lang=de") is True
       and "disable-gpu" in win.flags_text())
-win.config["hostOverrides"] = "example.com 192.168.1.10\n# a note\nbad"
+win.config["hostOverrides"] = "example.com 192.0.2.10\n# a note\nbad"
 check("a host override is read",
-      win.host_overrides() == [("example.com", "192.168.1.10")],
+      win.host_overrides() == [("example.com", "192.0.2.10")],
       win.host_overrides())
 check("...and becomes the flag the engine takes",
       win.host_override_flag()
-      == "--host-resolver-rules=MAP example.com 192.168.1.10",
+      == "--host-resolver-rules=MAP example.com 192.0.2.10",
       win.host_override_flag())
 check("the debugging port is off until he asks",
       win.config.get("debugPort") in (None, False))
@@ -527,7 +527,7 @@ win.debug_port(False)
 check("localhost is a local address", win.is_local_address("localhost")
       is True)
 check("so is 127.0.0.1", win.is_local_address("127.0.0.1") is True)
-check("so is a home network", win.is_local_address("192.168.1.10")
+check("so is a home network", win.is_local_address("192.0.2.10")
       is True)
 check("a site on the internet is not",
       win.is_local_address("example.com") is False)

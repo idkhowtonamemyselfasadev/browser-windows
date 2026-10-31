@@ -2,7 +2,7 @@
 
 # browser
 
-**A keyboard-driven web browser in a single Python file — the Windows edition.**
+**A keyboard-driven web browser in a single Python file.**
 
 Built on Chromium through Qt WebEngine. 116 themes that recolour the websites as well as
 the window, six interface looks, per-site proxy routing, and no telemetry of any kind.
@@ -37,8 +37,6 @@ the window, six interface looks, per-site proxy routing, and no telemetry of any
   jar, so two accounts on the same site can be signed in at the same time.
 - **A password manager that asks which account to use** before filling anything, and
   withholds the stored password from page scripts until the form is genuinely clicked.
-  Its file is given an ACL of this user alone, because the POSIX `chmod` used elsewhere
-  does nothing on Windows.
 - **Per-site proxy routing that fails closed.** A rule pointing at an unreachable proxy
   blocks the site rather than silently connecting directly.
 - **No telemetry, no account, no sync.** All data remains in `%LOCALAPPDATA%\browser\`.
@@ -111,30 +109,54 @@ moved or renamed — run `install.bat` again from its new location to rebuild it
 
 ### 116 themes, and the websites wear them too
 
-Settings → Theme has all 116, searchable, each shown as a swatch of its own colours and
-applied on the spot — no restart, and open tabs change with it. 77 are dark, 28 light and
-11 bring a face and a texture of their own. Most are credited palettes; the default is
-pitch black with [Catppuccin Mocha](https://catppuccin.com/palette/) text.
+![Twelve of the 116 themes](screenshots/themes.png)
+
+Twelve of them. Settings → Theme has the other 104, searchable, each shown as a swatch
+of its own colours and applied on the spot — no restart, and open tabs change with it.
+Most are credited palettes; a few, like the last three above, bring a face and a texture
+of their own.
 
 ### Six looks
 
 A theme decides what colour the browser is; a look decides what shape it is. Every look
 works with all 116 palettes, because a look defines geometry only and never a colour.
 
-| Look | What it does |
-|---|---|
-| **Classic** | The browser as it is drawn — the default. |
-| **Taskbar** | A strip along the bottom with a start button, the pinned sites and a clock. |
-| **Dock** | A floating dock over the page with icon magnification, and a now-playing widget that works the transport of whatever is making the sound. |
-| **Circle** | The start page becomes a ring: search in the middle, the quick links orbiting it, turned by the mouse wheel. |
-| **Liquid Glass** | Frosted, translucent chrome: the wallpaper shows softly through the tabs, the toolbar and the menus. |
-| **Flat mono** | One flat tone, no gradients and no borders — the quietest of the six. |
+| Classic | Taskbar |
+|:--|:--|
+| ![Classic](screenshots/look-classic.jpg) | ![Taskbar](screenshots/look-taskbar.jpg) |
+| The browser as it is drawn — the default. | A strip along the bottom with a start button, the pinned sites and a clock. |
+| **Dock** | **Circle** |
+| ![Dock](screenshots/look-dock.jpg) | ![Circle](screenshots/look-circle.jpg) |
+| A floating dock over the page with icon magnification, and a now-playing widget that works the transport of whatever is making the sound. | The start page becomes a ring: search in the middle, the quick links orbiting it, turned by the mouse wheel. |
+| **Flat mono** | **Liquid Glass** |
+| ![Flat mono](screenshots/look-flat.jpg) | Frosted, translucent chrome: the wallpaper shows softly through the tabs, the toolbar and the menus. Best seen running — a still of it is just the Classic shape. |
 
 ### Dark by default, not by filter
+
+![Automatic dark mode](screenshots/dark-mode.png)
 
 Sites that ship a dark theme are asked for it. Light-only sites are darkened
 automatically. Sites that are already dark are left untouched, which keeps heavy pages
 fast.
+
+### The whole bookmark tree in one panel
+
+| Favourites | Dragging one in |
+|---|---|
+| ![Favourites](screenshots/favorites-panel.png) | ![Dragging](screenshots/favorites-drag-into.png) |
+
+`Ctrl+Shift+F`, or the folder in the toolbar: a search box at the top and one list
+underneath, with folders opening in place rather than as fly-out submenus. Folders nest
+to any depth. A row can be dragged into a folder, out of one, or between two to reorder
+it; **Move to folder** on the row's `⋯` menu does the same without dragging.
+
+### The account chooser
+
+![The account chooser](screenshots/account-chooser.png)
+
+When two accounts are saved for a site, nothing is filled in until one is chosen
+(`Ctrl+Shift+M`, or the `@` in the address bar). The list is rendered by the browser
+itself: the page cannot see it and never learns what it contains.
 
 ### A configurable start page
 
@@ -147,191 +169,190 @@ forward rather than opening a second one.
 
 ## Features
 
-### Browsing
+<details>
+<summary><b>Tabs, windows and navigation</b></summary>
 
 - **Tabs and tab groups** — Chrome-style group pills, collapsible, colour-coded
-- **A relocatable tab strip** — along the top, below the page, or **down either
-  side as a sidebar** (`F9`): the tabs become a list of rows with the titles
-  readable rather than thirty slivers of a favicon, the group pills folding in
-  place, drag to reorder. `Shift+F9` folds it to 46 pixels of icons, and the
-  width is a splitter handle. Along the top it can also run in up to four rows
-  rather than scrolling. Settings → Tabs has a four-card picker for it
-- **A side panel** (`Ctrl+Shift+Y`) that holds any site beside the page —
-  Discord, Amazon Music, Claude, Twitch chat — as a real view on the same
-  cookie jar, so it is already logged in
-- **Game mode** (`Ctrl+Alt+G`) — every other tab asleep, everything muted,
-  notification requests refused; again to wake exactly those tabs
-- **Reader mode** (`Ctrl+Alt+R`), **link hints** (`Ctrl+Alt+K`), **read
-  aloud** (`Ctrl+Alt+V`) and highlights that come back on the next visit
-- **Screenshots** (`Ctrl+Shift+S`, whole page with `Ctrl+Alt+Shift+S`) with
-  password fields blurred before the shutter
-- **Minecraft server status** (`Ctrl+Alt+J`) — your servers, asked the same
-  question the game's own server list asks
-- **A command palette** (`Ctrl+Shift+K`) and a **cheat sheet** (`Ctrl+/`);
-  every shortcut can be changed in Settings
-- **Virtual browsers** — several independent sessions in one window, each with
-  its own cookie jar and logins; sign in to the same site twice without
-  signing out
-- **The address bar answers questions** — `12*64+3`, `5 in to mm`, `200 c to f`,
-  `4 gib to mb`, `time in tokyo`, `kw`, `days until 24.12.`, `#ff8800` — all
-  worked out on this computer, with nothing sent anywhere. Enter copies the answer
-- **Search keywords** — `yt cats`, `mr sodium`, `gh repo`, `amz ssd`, `w term`;
-  your own in Settings as any URL with a `%s` in it
-- **Suggestions from your own browser** — an open tab (Enter switches to it), a
-  bookmark, or a page from your history matched on words in any order; an empty
-  bar offers a link you just copied and your last searches
-- **Copy clean address** — the same link without `utm_*`, `fbclid` and the rest
-  of the tracking, also as a Markdown or HTML link, or "Title — address"
-- **Find in page** (`Ctrl+F`) — match count, next/previous, match case
-- **Save any image** — right-click → *Save image* works on whatever is drawn
-  under the cursor: a picture under an overlay, a CSS background, a canvas,
-  an inline SVG. `Shift` + right-click brings the menu up on sites that
-  block it
-- **Tab search** (`Ctrl+Shift+A`) — every open tab of every virtual browser in
-  one filtered list
-- **Reopen closed tab** (`Ctrl+Shift+T`) — restores its position and its group,
-  and **Recently closed** in the tab menu lists the last 25, not only the last
-- **The tab's own menu** — pin (it shrinks to its icon, keeps its place across
-  restarts and can be held to its own site), mute (also `Ctrl+M`) or "play
-  sound only here", lock so it asks before closing, rename it so the page
-  cannot change the title, duplicate it (`Ctrl+Shift+D`), open it in another
-  virtual browser or in a private tab, copy the addresses of one tab or of all
-  of them (plain or Markdown), open every address in the clipboard, bookmark
-  every tab into one folder, sort the tabs by site or title, group or close
-  every tab of this site, close the others / to the right / to the left /
-  the duplicates
-- **Account chooser** (`Ctrl+Shift+M`, or the `@` in the address bar) — two
-  accounts saved for a site means nothing is filled in until you say which
-  one. The list of accounts is a panel of the browser's own; the page never
-  sees it, and never learns what is on it
-- **Private tab** (`Ctrl+Shift+N`) — an off-the-record tab that leaves nothing
-  behind: no history, no saved password and none offered, no download record,
-  no favicon kept, and no cookies or site storage once the last one closes.
-  It is never saved as a tab and never comes back at the next start. Two
-  private tabs share one place; a normal tab sees none of it
-- **Page zoom from the keyboard** — `Ctrl` `+` / `Ctrl+-` / `Ctrl+0`, and
-  `Ctrl`+wheel. Per tab, from 25% to 500%; `Ctrl+0` returns to the level in
-  Settings. The browser's own pages are not zoomed a tab at a time — they
-  follow the Page zoom slider, the way they always have
-- **Favourites** (`Ctrl+Shift+F`, or the folder in the toolbar) — the whole
-  bookmark collection in one panel, the way Edge's Favourites button works: a
-  search box at the top and one list underneath, folders opening in place
-  rather than flying out sideways as submenus. Folders go inside folders as
-  deep as you like; a new one is named where you make it, renaming happens in
-  the row itself, and every row carries its own `⋯` so nothing is hidden
-  behind a right-click. Drag a row into a folder, out of one, or between two
-  to reorder it — or use **Move to folder** on the `⋯` if dragging is not
-  your friend. The bookmarks bar is off unless you ask for it
-  (`Ctrl+Shift+B`); the bookmark manager is `Ctrl+Shift+O`
-- **Smart address bar** — URLs, search, and live suggestions in one field
+- **Split view** — two pages side by side in one window, optionally scrolled together
+- **A relocatable tab strip** — along the top, below the page, or **down either side
+  as a sidebar** (`F9`): the tabs become a list of rows with the titles readable, the
+  group pills folding in place, drag-to-reorder and a cross on the row under the
+  pointer. `Shift+F9` folds it to 46 pixels of favicons. The width is a splitter
+  handle. Along the top it can also run in up to four rows rather than scrolling
+- **Workspaces** — named sets of tabs within one window; the outgoing set is saved
+  before the incoming one opens, so switching between them preserves both
+- **Virtual browsers** — several independent sessions in one window, each with its own
+  cookie jar and logins; sign in to the same site twice without signing out
+- **A side panel** (`Ctrl+Shift+Y`) holding any site beside the page (Discord, Amazon
+  Music, Twitch chat and so on) as a real view on the same cookie jar, already signed in
+- **A command palette** (`Ctrl+Shift+K`) and a **cheat sheet** (`Ctrl+/`); every
+  shortcut can be changed in Settings
+- **Tab search** (`Ctrl+Shift+A`) — every open tab of every virtual browser in one
+  filtered list
+- **Reopen closed tab** (`Ctrl+Shift+T`) — restores its position *and* its group;
+  **Recently closed** in the tab menu lists the last 25, not only the last
+- **A full tab context menu** — pin it (it shrinks to its icon, keeps its place across
+  restarts and can be held to its own site), mute it (`Ctrl+M`) or play sound only
+  here, lock it so it asks before closing, rename it so the page cannot change the
+  title, duplicate it (`Ctrl+Shift+D`), open it in another virtual browser or in a
+  private tab, copy the addresses of one tab or all of them (plain or Markdown), open
+  every address in the clipboard, bookmark every tab into one folder, sort the tabs by
+  site or title, group or close every tab of this site, close the others / to the
+  right / to the left / the duplicates
+- **A call indicator** — a tab using the microphone or camera is flagged, so it is clear
+  which one is listening
+- **A resource monitor** (`Ctrl+Shift+Esc`) — memory and processor use, per tab
 - **Fullscreen video**, background tabs, sleeping tabs restored on demand
-- **A toolbar you pick** — right-click the row at the top, or Settings →
-  Toolbar, to choose which buttons are up there and what order they come in.
-  Back, forward, reload and the address bar stay; everything else is yours,
-  and eight more buttons that were only ever keyboard shortcuts can join
-  them. Taking a button away never touches its shortcut.
 
-### Downloads and printing
+</details>
 
-- **Download manager** — a downloads page and a toolbar bar with progress,
-  speed and time remaining; pause, resume, cancel; history that survives
-  restarts
-- **Print or save as PDF** (`Ctrl+P`) — the PDF lands in the downloads list
-  alongside everything else
+<details>
+<summary><b>The address bar</b> — calculation, keywords, suggestions, clean links</summary>
 
-### Privacy and security
+- **Calculation and conversion** — `12*64+3`, `5 in to mm`, `200 c to f`, `4 gib to mb`,
+  `time in tokyo`, `kw`, `days until 24.12.`, `#ff8800`. All worked out on this
+  machine, with nothing sent anywhere; Enter copies the result
+- **Search keywords** — `yt cats`, `mr sodium`, `gh repo`, `amz ssd`, `w term`; custom
+  ones are defined in Settings as any URL containing `%s`
+- **Local suggestions** — an open tab (Enter switches to it), a bookmark, or a page from
+  your history matched on words in any order; an empty bar offers a recently copied link
+  and your last searches
+- **Copy clean address** — the same link without `utm_*`, `fbclid` and the rest of the
+  tracking, also as a Markdown or HTML link, or "Title — address"
+- `Ctrl+Enter` / `Ctrl+Shift+Enter` finish a bare name with `.com` / `.de`;
+  `Shift+Delete` forgets a suggestion
 
-- **Vault Password** — the built-in password manager. Optional: setup asks
-  whether you want it, and Settings → Plugins switches it on or off at any
-  time. Off means off — the login watcher is never put into a page, so no
-  form is looked at and nothing is ever written to the vault. Switching it
-  off deletes nothing; your saved logins are still there when you switch it
-  back on. When it is on it offers to save logins and fills them back in on
-  a real click, and the saved password is withheld from page scripts until
-  you actually interact with the form, so an injected script reads an empty
-  field.
-- **Per-site proxy routing** — send chosen sites through a proxy while
-  everything else goes direct, or the reverse. Rules are enforced by a
-  built-in local proxy and fail closed: a rule pointing at a dead proxy
-  blocks the site rather than quietly going direct.
-- **Site permissions** — microphone, camera and notification requests are
-  asked per origin and remembered per origin, scheme and port.
-- **History control** — pause it, search it, or clear it
+</details>
+
+<details>
+<summary><b>Reading, media and gaming</b></summary>
+
+- **Reader mode** (`Ctrl+Alt+R`), **link hints** (`Ctrl+Alt+K`), **read aloud**
+  (`Ctrl+Alt+V`), and highlights that come back on the next visit
+- **Game mode** (`Ctrl+Alt+G`) — suspends every other tab, mutes all audio and refuses
+  notification requests; pressing it again wakes exactly those tabs
+- **Screenshots** (`Ctrl+Shift+S`, the whole page with `Ctrl+Alt+Shift+S`) with password
+  fields blurred before the shutter
+- **Save any image** — right-click → *Save image* operates on whatever is drawn under
+  the cursor: a picture under an overlay, a `<picture>`, a video poster, a CSS background,
+  an inline SVG, a canvas. `Shift` + right-click brings the menu up on sites that block it
+- **Minecraft server status** (`Ctrl+Alt+J`) — queries your servers with the same
+  protocol request the game's own server list uses
+- **Media keys** control the page's player, and the video has its own shortcuts
+  (`Ctrl+Alt+Space`, `Ctrl+Alt+←/→`); `Ctrl+Shift+Space` pauses every playing tab at once
+- **Page zoom from the keyboard** — `Ctrl` `+` / `Ctrl+-` / `Ctrl+0`, and `Ctrl`+wheel,
+  per tab, 25 % to 500 %
+
+</details>
+
+<details>
+<summary><b>Themes</b> — how site theming works</summary>
+
+**Websites are themed as well as the window.** Every page is recoloured in the selected
+palette, and the character themes bring their own typography and texture (Terminal glows,
+Newspaper sets in serif). This is on by default; Settings → Appearance → *Theme websites*
+disables it, and right-click → *Don't theme this site* exempts a single site. Sites that
+are dark by design are left alone, and a themed page is never darkened twice.
+
+The palettes live in `_CATALOGUE` in `browser.py`: one row of colours each, so adding
+your own is a row rather than a stylesheet.
+
+</details>
+
+<details>
+<summary><b>Privacy and security</b> — vault, proxy rules, permissions, trust boundary</summary>
+
+- **Vault Password** — the built-in password manager, and optional: setup asks whether
+  you want it, and Settings → Plugins switches it at any time. Off means off — the login
+  watcher is never injected into a page, so no form is inspected and nothing is written
+  to the vault. Disabling it deletes nothing; stored logins return when it is enabled
+  again. While enabled, it offers to save logins and fills them on a genuine click, and
+  withholds the stored password from page scripts until the form is actually interacted
+  with, so an injected script reads an empty field.
+- **Per-site proxy routing** — send chosen sites through a proxy while everything else
+  goes direct, or the reverse. Enforced by a built-in local proxy and **fails closed**:
+  a rule pointing at a dead proxy blocks the site rather than quietly going direct.
+- **Site permissions** — microphone, camera and notification requests are asked per
+  origin and remembered per origin, scheme and port. A denial can be revised later.
+- **Private tab** (`Ctrl+Shift+N`) — leaves nothing behind: no history, no saved password
+  and none offered, no download record, no favicon kept, and no cookies or site storage
+  once the last one closes. Never saved as a tab, never restored at the next start. Two
+  private tabs share one place; a normal tab sees none of it.
+- **Panic** (`Ctrl+Alt+P`) — mutes all audio, blanks every tab and locks the vault.
+  **Streamer mode** (`Ctrl+Alt+H`) hides the address bar's text.
+- **History control** — pause it, search it, or clear it.
 - **Trust boundary** — the browser's own pages get a privileged bridge to the
-  application; websites never do, and cannot reach it through the underlying
-  channel
+  application; websites never do, and cannot reach it through the underlying channel.
 
-### Setup and configuration
+</details>
 
-- **Setup** — a seven-step first run: language, search engine, start page,
-  site behaviour, privacy, quick links, summary. Re-runnable at any time.
-- **Settings** — opens as a pane over the window rather than a page you
-  navigate to, so it costs no tab and no history entry
-- **Start page** — clock, search, editable quick links, background images
-  (bundled or your own)
+<details>
+<summary><b>Downloads, printing, setup and configuration</b></summary>
+
+- **Download manager** — a downloads page and a toolbar bar with progress, speed and
+  time remaining; pause, resume, cancel; history that survives restarts
+- **Print or save as PDF** (`Ctrl+P`) — the PDF lands in the downloads list with
+  everything else
+- **Graphics card selection** — on a machine with two GPUs the system's default is not
+  always the faster one. A chooser shown before startup lists every card, marks the one
+  the system boots on, and relaunches the browser with the environment that choice
+  requires, because the engine's GPU is fixed when its process starts
+- **Setup** — a seven-step first run: language, search engine, start page, site
+  behaviour, privacy, quick links, summary. Re-runnable at any time
+- **Settings** — opens as a pane over the window rather than a page you navigate to, so
+  it costs no tab and no history entry
+- **A toolbar you pick** — right-click the top row, or Settings → Toolbar, to choose
+  which buttons are up there and in what order. Back, forward, reload and the address bar
+  stay; everything else is yours, and eight more buttons that were only ever keyboard
+  shortcuts can join them. Taking a button away never touches its shortcut
 - **Userscripts** — Greasemonkey-style `*.user.js` files, per profile
-- **Themes** — 115 of them (Settings → Theme), grouped Dark / Light / With
-  character, searchable, each shown as a swatch of its own colours and
-  applied on the spot. Most are credited palettes (Catppuccin, Gruvbox,
-  Nord, Dracula, Solarized, Tokyo Night, Everforest, Rosé Pine, Kanagawa,
-  Monokai, Ayu, Material, Oxocarbon, Nightfox, GitHub, VS Code…); a few
-  bring a face and a texture of their own — Steampunk, Terminal Green,
-  Amber CRT, Blueprint, Newspaper, Game Boy, Frutiger Aero. The default is
-  unchanged.
-- **Looks** (Settings → Look) — a theme is what colour the browser is; a
-  look is what shape it is. Four of them, and every one works with every
-  one of the 115 palettes, because a look owns geometry and never a
-  colour:
-  - **Classic** — the browser as it is drawn. The default, and nothing
-    about it changes when the others exist.
-  - **Taskbar** — a strip along the bottom with a start button, your
-    pinned sites and a clock. The start button opens a search box over a
-    grid of the pins.
-  - **Dock** — a floating, rounded dock over the page with icon
-    magnification, roomier and rounder chrome throughout, and a
-    now-playing widget whose play, pause and skip work the transport of
-    whatever page is making the sound.
-  - **Circle** — the start page becomes a ring: the search box in the
-    middle, the quick links orbiting it, the mouse wheel turning them.
-    The caret still lands in the search box.
-
-  **Pinned sites are the start page's quick links** — one list, not two.
-  Pin from any page's right-click menu, from the `+` on the taskbar, or by
-  adding a quick link on the start page; whichever you use, the other
-  places show it at once. Clicking a pin brings its tab forward if it is
-  already open instead of opening a second one.
 - **Interface translations** — the UI follows the language you choose
-- **Single instance** — links from other applications open as tabs in the
-  running window; works as the system default browser
-- **Built-in updates** — pulls the newest version from this repository
+- **Single instance** — links from other applications open as tabs in the running
+  window; works as the system default browser
+- **Built-in updates** — fetches the newest version from this repository, and refuses to
+  proceed where that would discard uncommitted work
+
+</details>
 
 ## Keyboard shortcuts
 
-Shortcuts are handled by the browser itself, so they are the same on every
-machine and need nothing set up in Windows.
+Shortcuts are handled by the browser itself, so they behave identically on any desktop or
+window manager with no system configuration. All of them can be reassigned in Settings,
+and `Ctrl+/` shows the complete list on a page.
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+T` | New tab |
+| `Ctrl+T` / `Ctrl+W` | New tab / close tab (a pinned tab stays) |
 | `Ctrl+Shift+N` | New private tab |
-| `Ctrl+W` | Close tab (a pinned tab stays) |
 | `Ctrl+Shift+T` | Reopen closed tab |
-| `Ctrl+Shift+D` | Duplicate tab |
 | `Ctrl+Shift+K` | Command palette — every action by name |
 | `Ctrl+Shift+Y` | Side panel — any site beside the page |
+| `Ctrl+L` / `Ctrl+K` | Focus the address bar / ready for a search |
+| `Ctrl+F` | Find in page |
+| `Ctrl+Shift+A` | Search open tabs |
+| `Ctrl+Shift+F` | Favourites — the whole bookmark tree in one panel |
+| `Ctrl+Shift+M` | Choose which saved account signs in here |
+| `Ctrl+Alt+R` | Reader mode |
+| `Ctrl+Alt+G` | Game mode |
+| `Ctrl+,` | Settings |
+| `Ctrl+/` | Every shortcut, on one page |
+
+<details>
+<summary>The full list</summary>
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+Shift+D` | Duplicate tab |
 | `Ctrl+Shift+Esc` | What the tabs are costing |
 | `Ctrl+Alt+U` | Your own CSS for this site |
-| `Ctrl+Alt+G` | Game mode |
 | `Ctrl+Alt+J` | Minecraft server status |
 | `Ctrl+Alt+Q` / `Ctrl+Alt+Y` | Discord mute / deafen |
-| `Ctrl+Alt+R` | Reader mode |
 | `Ctrl+Alt+K` | Link hints — a letter on every link |
 | `Ctrl+Alt+V` | Read the selection aloud |
-| `Ctrl+/` | The keyboard shortcuts, on one page |
 | `Ctrl+Shift+S` | Screenshot of what is on screen |
+| `Ctrl+Alt+Shift+S` | Screenshot of the whole page |
 | `Ctrl+Alt+P` | Panic: mute everything, blank every tab, lock the vault |
 | `Ctrl+Alt+H` | Streamer mode: hide the address bar's text |
-| `Ctrl+Alt+Shift+S` | Screenshot of the whole page |
 | `Ctrl+Alt+Space` / `Ctrl+Alt+←→` | Play/pause / seek the page's video |
 | `Ctrl+Shift+Space` | Pause every playing tab (again: resume) |
 | Middle-click Back / Forward | That step, in a new tab |
@@ -339,61 +360,200 @@ machine and need nothing set up in Windows.
 | `Ctrl+M` | Mute / unmute this tab |
 | `Ctrl+1` … `Ctrl+8` / `Ctrl+9` | Go to that tab / the last tab |
 | `Ctrl+Shift+PgUp` / `PgDn` | Move this tab along the strip |
-| `Ctrl+L` | Focus address bar |
-| `Ctrl+K` | Address bar, ready for a search |
 | `Alt+Enter` (in the bar) | Open what you typed in a new tab |
 | `Ctrl+Enter` / `Ctrl+Shift+Enter` | Finish the name with `.com` / `.de` |
 | `Shift+Delete` (in the bar) | Forget that suggestion |
-| `Ctrl+F` | Find in page |
 | `Ctrl+P` | Print or save as PDF |
-| `Ctrl+Shift+A` | Search open tabs |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Shift+Tab` | Next virtual browser |
 | `Ctrl+R` / `F5` | Reload |
-| `Ctrl+H` | History |
-| `Ctrl+J` | Downloads |
-| `Ctrl+Shift+F` | Favourites — the whole bookmark tree in one panel |
+| `Ctrl+H` / `Ctrl+J` | History / downloads |
 | `Ctrl+Shift+O` | Bookmarks |
+| `Ctrl+Shift+B` | Bookmarks bar on / off |
 | `Ctrl+Shift+P` | Passwords (with Vault Password installed) |
 | `Ctrl+Shift+G` | Copy a fresh password to the clipboard |
-| `Ctrl+Shift+M` | Choose which saved account signs in here |
-| `Ctrl+,` | Settings |
-| `Ctrl+` `+` / `Ctrl+-` | Zoom the page in / out (also `Ctrl`+wheel) |
-| `Ctrl+0` | Back to the zoom set in Settings |
+| `Ctrl+` `+` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / back to the level in Settings |
 | `F9` / `Shift+F9` | Tabs down the side / fold the sidebar to icons |
 | `F11` | Fullscreen |
 | `F12` / `Ctrl+Shift+I` | Developer tools |
 | `Ctrl+Q` | Quit |
 
-Settings, History, Downloads, Bookmarks and Passwords are panes, not
-tabs: they open over whatever you were looking at, `Esc` (or pressing
-the same key again) closes them, and you are back on the page you came
-from. They never appear in the tab strip or the address bar, and they
-are never reopened as tabs when the browser starts.
+</details>
+
+Settings, History, Downloads, Bookmarks and Passwords are **panes, not tabs**: they open
+over the current page, `Esc` (or the same shortcut again) closes them, and the page
+underneath returns. They never appear in the tab strip or the address bar, and are never
+restored as tabs at the next start.
 
 ## Configuration and data
 
-Most settings live in the settings pane (`Ctrl+,`), stored in
-`%LOCALAPPDATA%\browser\config.json`. The sources are short and meant to be
-edited for anything beyond that:
+Most settings live in the settings pane (`Ctrl+,`) and are stored in
+`%LOCALAPPDATA%\browser\config.json`. Anything beyond that is intended to be changed in
+the sources:
 
 | Path | Contents |
 |------|----------|
-| `browser.py` | Application code. Interface colours are in the `STYLE` string; sites that skip auto-darkening are listed in `NATIVE_DARK_SITES`. |
+| `browser.py` | The application. Interface colours are in the `STYLE` string, the palettes in `_CATALOGUE`, and sites that skip auto-darkening in `NATIVE_DARK_SITES`. |
 | `start.html` | Start page and first-run setup. |
 | `settings.html` | Settings pane. |
 | `history.html`, `downloads.html`, `bookmarks.html`, `passwords.html` | The other four panes. |
 | `backgrounds/` | Bundled background images. |
 
-The theme is pitch black (`#000000`) with
-[Catppuccin Mocha](https://catppuccin.com/palette/) text colours.
+User data — history, settings, saved logins, downloads and cookies — is stored under
+`%LOCALAPPDATA%\browser\`. Saved passwords are obfuscated with a per-install key file;
+the security boundary is the operating system account, not a master password.
 
-User data — history, settings, saved logins, downloads and cookies — is
-stored under `%LOCALAPPDATA%\browser\`. Saved passwords are obfuscated with a
-per-install key file; the security boundary is your operating system account,
-not a master password. The vault file is given an ACL of its own — this user,
-nobody else — because the POSIX `chmod` the code relies on elsewhere does
-nothing at all on Windows.
+## What the in-browser pages need from `browser.py`
+
+The nine pages the browser serves itself — `start`, `history`, `downloads`,
+`bookmarks`, `notes`, `passwords`, `settings`, `player`, `mictest` — are copied
+into the Windows and macOS editions and ported
+back from here, and `~/claude/browser-pages` keeps them in step. It carries
+**HTML only** — so a page that starts calling a new `Bridge` method has a
+dependency the manifest cannot see, and the port leaves that method undefined.
+A `TypeError` inside a channel callback then abandons the rest of it, which
+looks exactly like a page that loaded and drew nothing. That is how
+`history.html` nearly shipped blank on Windows after an otherwise correct port:
+the page needs `Bridge.siteIcons` and `Browser.site_icon_data`, and neither
+travelled with it.
+
+So: **changing a shared page to call a new bridge method is a change to this
+table too.** 94 distinct methods across the nine pages as of 2026-10-29, and
+`test_bridgecalls.py` now checks every one of them against `class Bridge`'s own
+AST, so this table stops being the only thing standing between a port and a
+blank page. It has two verdicts: unguarded and missing is a throw and fails,
+guarded and missing is tolerated *and pinned by name*, so an existing gap stays
+and a new one is a failure rather than quietly joining the list.
+
+| Page | Bridge methods it calls | Not in `browser.py` |
+|------|------------------------:|---------------------|
+| `start.html` | 12 | — |
+| `history.html` | 14 | — |
+| `downloads.html` | 10 | — |
+| `bookmarks.html` | 10 | — |
+| `notes.html` | 3 | — |
+| `passwords.html` | 22 | — |
+| `settings.html` | 33 | — |
+| `player.html` | 5 | `playerQueue` — guarded; the playlist arrives through `window.__playerLoad` instead |
+| `mictest.html` | 1 | — |
+
+Ask for an optional one the way the pages already do — `if (bridge.x) { ... }`.
+An unguarded call to a method that is not there throws, and an uncaught throw
+in an inline script abandons every statement below it. `test_histrender.py`
+catches that shape for `getElementById`; nothing yet catches it for the bridge,
+so it is a review question.
+
+A guarded call to a method that does not exist is not free, either. It does not
+throw, so nothing in a log says so — but if the page hangs a *button* on it, the
+browser is advertising something it cannot do, and clicking it does nothing at
+all: no error, no message. That is worse for someone using it than the feature
+simply being absent, because absent reads as a browser that is simple and dead
+reads as a browser that is broken. `player.html`'s **Subtitles…** sat like that
+from the day it was written until `Bridge.playerSubtitles` landed on 2026-10-29.
+
+**A method is not the only dependency.** `settings.html` calls two methods for
+every one of its switches — `getSettings` and `setSetting` — so a new setting
+adds no row to the table above and is still a change to this contract: the
+*key* has to be in what `getSettings` answers, and `setSetting` has to route it
+somewhere. The tab-sidebar picker added on 2026-10-29 needs `tabStrip` and
+`tabStripWidth` in both. Ported into a tree without them, the picker draws, it
+highlights the card that was clicked, it saves a config key nothing reads — and
+nothing happens. That is quieter than a `TypeError` and harder to spot, so a
+port of `settings.html` is finished when the new control has been *used*, not
+when the page has loaded.
+
+## Automation: the agent bridge
+
+While the browser runs it listens on a second local socket, `$TMPDIR/browser-agent`
+(`/tmp/browser-agent`); `agent.py` is the command-line client. A script can open a
+background tab, read a page, click, type, wait for a node and capture a screenshot, all
+on tabs that are not in front and **without the window ever being raised**. The purpose
+is to let a local assistant use the web without taking over the screen.
+
+```sh
+python3 agent.py tabs                      # what is open
+python3 agent.py open https://example.org  # background tab; prints its id
+python3 agent.py text --tab 7              # the page as text
+python3 agent.py click 'button.go' --tab 7
+python3 agent.py type '#q' hello --enter --tab 7
+python3 agent.py shot /tmp/page.png --tab 7
+```
+
+The socket is a Unix socket owned by your user account and is not reachable from the
+network. It is disabled with `"agentBridge": false` in `config.json` or
+`BROWSER_NO_AGENT=1`. `test_agent.py` is its offscreen test.
+
+<details>
+<summary><b>Security updates</b> — the monthly engine check, and how to act on it</summary>
+
+Most of what can go wrong in a browser goes wrong in the engine, and the engine here is
+Chromium inside Qt WebEngine. A scheduled job on GitHub therefore watches it. Nothing runs
+on your machine and nothing is sent anywhere.
+
+**On the first of every month** (GitHub cannot say "every five weeks", so this is the
+closest it gets) a job runs and asks:
+
+- which Chromium this browser is built on, and how far behind Google's current Chrome
+  that is
+- whether any Chrome holes *known to be used against people in the wild* are newer than
+  that engine — the short list CISA publishes, not the thousands of theoretical ones
+- whether a newer PyQt6 or PyQt6-WebEngine has been released
+- whether the browser's own security checks still pass
+
+**If there is nothing to do, it reports nothing.** No issue, no mail. That is the normal
+outcome and it is deliberate: a check that notifies every month is a check that gets
+ignored. The full report is always written to the run's summary page under the Actions tab
+if you want to read it anyway.
+
+**If there is something to do, it opens a single issue** titled "Browser security check"
+and edits that same issue thereafter, so duplicates never accumulate. When the problem is
+resolved it comments and closes the issue itself.
+
+### What to do when an issue appears
+
+The first section states which of the following cases applies:
+
+- **"PyQt6-WebEngine x.y.z is out"** — the case that matters. Update the engine on
+  your machine (`sudo dnf upgrade python3-pyqt6-webengine`, or whatever your distribution
+  calls it) and merge the Dependabot pull request that bumps the pinned version here.
+- **"The browser's own security checks are failing"** — a recent change has broken a
+  protection that was previously fixed. The issue names the check; run
+  `python3 .github/scripts/invariant_checks.py` to see it locally.
+- **"N Chrome holes known to be exploited are newer than this engine"** — informational,
+  and usually requires no action. Qt ships its own Chromium snapshot and backports
+  security fixes into it, so it is always a few versions behind Chrome by design. Taking
+  the next engine update promptly is the appropriate response.
+
+To see which engine your own machine is running:
+
+```sh
+python3 -c "from PyQt6.QtWebEngineCore import qWebEngineChromiumVersion as v; print(v())"
+```
+
+### Dependabot and pull-request checks
+
+**Dependabot** opens a pull request when PyQt6, PyQt6-WebEngine or one of the workflow
+actions has a new release. Merging it is the update.
+
+**Every pull request** runs the security checks, so a change that breaks one cannot merge
+without a red cross. They also run by hand:
+
+```sh
+python3 .github/scripts/invariant_checks.py
+```
+
+They start a headless browser against a throwaway profile — your real history, logins and
+settings are never touched — and check that a website cannot reach the browser's internal
+bridge, that the download and bookmark controls refuse a page that does not hold this
+run's key, that a saved password stays out of the page until a real click, that
+permissions are remembered per site *and* port, and that a site routed through a proxy
+that is down gets blocked rather than quietly connected.
+
+One caveat: **GitHub disables scheduled jobs on a repository with no activity for 60
+days**, and sends a mail when it does. Any push re-enables them, as does pressing "Run
+workflow" on the Actions tab.
+
+</details>
 
 ## What is not here
 
@@ -418,7 +578,7 @@ Anything that is a *program* rather than a desktop service — mpv, VLC,
 yt-dlp, ffmpeg, ClamAV, the 1Password CLI — is found on the PATH here
 exactly as it is there, and the feature is present when the program is.
 
-## Linux
+## This edition and the Linux one
 
 The Linux edition, with the same feature set, is maintained at
 [idkhowtonamemyselfasadev/browser](https://github.com/idkhowtonamemyselfasadev/browser).
@@ -434,162 +594,24 @@ the file ACL on the vault, the taskbar identity and the font stacks.
 tools/win_port.py --to <linux-commit> --dry-run   # report, write nothing
 tools/win_port.py --to <linux-commit>             # regenerate
 tools/win_port.py --check                         # this tree, and how far behind it is
-tools/port_map.py                                 # which commits the conflicts come from
-tools/runall.sh                                   # the offscreen test suite
 ```
 
-`win_port.json` names `~/browser` as the Linux checkout because this file is
-public; `WIN_PORT_LINUX_REPO` points a single run at another clone instead,
-and both `--check` and `port_map.py` honour it, so a drift report always
-describes the tree a port would actually read.
-
-`--check` verifies this tree — every marker holds, every `.py` parses — and
-then reports the drift: which clone and which branch it is on, how many
-commits of its `main` this tree is behind, and how much uncommitted work sits
-there that no port can see. It is deliberately two statements rather than one,
-because the markers passing says nothing about the edition being current.
-
-The drift half classifies the recorded base before it counts anything, and
-that is not a detail. `ported_from..main` is empty both when the base *is*
-`main` and when the base is a descendant of it, so a count alone cannot tell
-"level" from "nowhere near" — and for a while this printed *level with main*
-for the second case. There are four shapes, and `--check` names which one it
-is: `on` (an ancestor of `main`, what a base is for), `ahead` (a descendant —
-the empty range that read as health), `diverged` (a common ancestor, neither
-containing the other; the counts are real, and a port carries `main`'s side
-only) and `unrelated` (no common ancestor at all, so the merge has no base and
-its conflict counts are noise). `port_map.py` refuses on `ahead` and
-`unrelated` rather than print zeros, notes `diverged` and carries on.
-
-**Where this tree actually stands**, measured both ways: against `~/browser`
-the base is 39 commits *ahead* of that repo's `main`, reachable only from a
-stale dependabot branch; against `~/claude/browser-linux` it shares *no history
-with `main` at all* — no merge base, 62 commits on one side and 47 on the other
-— and `origin/main` there shares none with it either. Both clones have the same
-origin, so the upstream history was **rewritten**, and `ported_from` names a
-commit from the lineage before that, which now survives only on stale remote
-branches. Every "0 commits" this tree has reported comes from that one fact.
-Fixing it means pointing `ported_from` at a commit the live `main` can reach,
-and that choice decides what gets replayed, so it is not guessed at here.
-
-`browser.py` is a three-way merge — the base is the Linux commit this tree was
-last generated from, which `tools/win_port.json` records — so the Windows
-regions sit on our side of the merge and survive without anyone having to
-remember them. The pages and the test suite are copied from the same commit,
-the font stacks are substituted, and then every Windows region has to prove it
-is still there. If one is missing, nothing is written at all.
-
-`tools/win_port.json` is the data: what merges, what is copied, the
-substitutions and why, the two files this edition deliberately changes, and
-the checks that must pass afterwards. It refuses rather than guesses — a merge
-conflict, a substitution that stopped matching, or a page edited by hand here
-all stop it and say what to do.
-
-The Windows-only code paths cannot run on the machine this is built on, so
-they are covered by `--check` rather than by tests. Everything else is covered
-by the Linux suite, run here against this `browser.py`.
-
-Six of the markers assert an *absence* (`count: 0`): none of the 118 files a
-port writes may contain the home directory of the person this is built for, the
-subnet his machines sit on, or his mail handle. `~/browser` still carries two of
-those at the recorded base, and the pages are copied rather than merged, so
-substitutions rewrite every spelling either upstream uses on the way in and the
-markers refuse the port if any of it arrives anyway. A rule may spell its needle
-as a **list of fragments** rather than a string — joined with nothing between —
-because a guard that writes out the string it forbids puts that string in this
-public repo, which is the leak, and the pre-commit hook refuses it.
-`tests/test_leakguard.py` is what keeps all of that honest: it checks the tree
-is clean, that the substitutions are idempotent and that each fragment needle
-still joins back to what it must match, and then it **simulates nine
-regressions a port could plausibly produce and requires the marker that should
-catch each one to actually catch it.** A marker nobody has ever seen fail is an
-untested assertion.
-
-### Unsettled, for want of a Windows machine
-
-There is no Windows machine and no VM here, so some of this edition has been
-written, reviewed and tested on Linux and never once run on the platform it
-is for. Those parts are listed rather than quietly assumed, so that the next
-person does not read them and take them for things that were checked.
-
-Each one is an hour on any Windows box, and until someone has that hour the
-honest label is **unverified — never executed**.
-
-**The first launch.** None of this has painted a pixel on Windows:
-
-- **The dark title bar.** Windows draws the title bar, not Qt, and draws it
-  light unless told otherwise, so a dark theme used to come up under a white
-  bar. `restyle_window_frames()` now sets `QStyleHints.setColorScheme` and
-  then calls `DwmSetWindowAttribute` per window, trying attribute 20 and
-  then 19 (Windows 10 before build 19041 uses 19 and refuses the other
-  silently). On Linux every line of it returns at the first
-  `sys.platform != "win32"`, which is to say the suite passing here proves
-  only that it does nothing here.
-- **Whether the native dialogs follow.** `setColorScheme` is supposed to
-  carry the scheme into the file picker and the other dialogs Windows draws
-  for us. If it does not, those come up white against a dark browser and
-  need their own handling.
-- **DPI on a 4K laptop.** Qt 6.11's `highDpiScaleFactorRoundingPolicy` is
-  `PassThrough`, measured in this tree's own venv, so 125/150/175% should be
-  honoured fractionally rather than rounded. Measured, not seen.
-- **The font stack.** Every UI rule leads with *JetBrainsMono Nerd Font*,
-  which no Windows machine has, and falls back to Cascadia Mono then
-  Consolas. Which one actually gets used, and whether it looks right, is
-  unseen. One known rough edge: the font picker opens on the Nerd Font name
-  even where nothing can serve it.
-
-**The installer.** `BrowserSetup.exe` is built by CI and has never been run
-by anyone here:
-
-- **The SmartScreen path.** The README and the release notes describe the
-  blue page and the *More info → Run anyway* route from documentation, not
-  from having clicked it.
-- **The Start-menu entry, the uninstall row and the install path.** Written
-  to `packaging/installer.iss` from the Inno Setup docs. What Settings →
-  Apps actually shows is unseen.
-- **`MinVersion=10.0` and `ArchitecturesAllowed=x64compatible`.** Meant to
-  refuse an unsupported machine with a sentence instead of installing an app
-  that cannot start. Never refused anything yet.
-- **The trim.** CI prunes the debug `.pak` files and the unused locales out
-  of the bundle before Inno packs it. The 25-second smoke test runs after
-  the prune on purpose, so a prune that broke QtWebEngine would fail there —
-  but "it started" is not "it renders".
-- **The PowerShell.** There is no `pwsh` on this machine. Every line of
-  `.github/workflows/build-exe.yml` ships having been read and not run, and
-  on 2026-10-29 that cost a build: `$build:` parses as a scope-qualified
-  variable, so the whole script was a `ParserError` before its first
-  statement. `tests/test_workflow.py` now lints that file for the mistakes
-  that have actually been made in it, which is not the same as running it.
-
-**Two things in `browser.py`** that predate the above:
-
-- **Whether a CDM path with a space in it survives the flag.** The comment
-  above `_find_widevine()` says Qt splits `QTWEBENGINE_CHROMIUM_FLAGS` on
-  spaces, so such a path "cannot be passed this way at all"; the code that
-  actually launches passes `--widevine-path="%s"`, quoted. Every Windows CDM
-  path contains *Program Files*. If the quoting holds, the earlier comment is
-  overcautious; if it does not, DRM video works here only when Chrome's CDM
-  happens to sit under `%LOCALAPPDATA%` — a defect that looks exactly like a
-  working feature. One run on Windows settles it.
-- **The VA-API block is gated on the flag string, not on the platform.** The
-  Linux hardware-decode features, and the `/proc/driver/nvidia/version` check
-  beside them, are evaluated here too. Almost certainly inert, because
-  Chromium ignores features it does not know, but nothing declares it either
-  way.
+`browser.py` is a three-way merge against the Linux commit this tree was last
+generated from (`tools/win_port.json` records it), so the Windows regions sit
+on our side of the merge and survive. The pages and the test suite are copied
+from the same commit and the font stacks are substituted; then every Windows
+region has to prove it is still there, or nothing is written at all.
 
 ## Uninstall
 
-**If you used BrowserSetup.exe:** **Settings → Apps → Installed apps →
-Browser → Uninstall**. It removes the program, the Start-menu entry and the
-desktop shortcut.
+```sh
+rm ~/.local/share/applications/browser.desktop
+rm ~/.local/share/icons/hicolor/scalable/apps/browser.svg
+```
 
-**If you ran it from source:** delete the *Browser* shortcut from your
-desktop and remove the folder you unzipped.
-
-Either way your browsing data stays in `%LOCALAPPDATA%\browser\` — nothing
-deletes it for you, and you can remove that folder separately whenever you
-want to.
+Browsing data in `%LOCALAPPDATA%\browser\` can be removed separately. Deleting the cloned
+repository completes the removal.
 
 ## Licence
 
-GNU General Public License v3.0 — see [LICENSE](LICENSE).
+[GNU General Public License v3](LICENSE).

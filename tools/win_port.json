@@ -14,7 +14,7 @@
     "expands it. An absolute path works too."
   ],
   "linux_repo": "~/browser",
-  "ported_from": "49437480477fb06b6e7c328e832a6e414c7de966",
+  "ported_from": "c0405a9f171321203fea54345fd2aef54a1a0304",
   "merge_files": [
     "browser.py",
     "test_upgrade.py",
@@ -30,6 +30,8 @@
     "passwords.html",
     "# the test suite; it belongs to the browser it tests, so it is ported too",
     "_boot.py",
+    "# tmpscratch.py: per-run scratch dir used by _boot.py and tests/harness.py (Linux refactor since the recorded base)",
+    "tmpscratch.py",
     "test_page.py",
     "test_panes.py",
     "test_newtab.py",
@@ -184,6 +186,16 @@
     "2026-10-29: thirteen files in this edition carried his first NAME, ten of them copied straight from Linux, one of them shipped source (theme_web.py) and two of them inside the suite whose whole job is to say nothing of his is here. The three strings this file set out to keep out were his home directory, his subnet and his mail handle -- the bare name was not among them, which is the same blind spot gitguard's own personal.txt had. The rules below close it for the copied files, which is the only place this edition can: the name is upstream's to remove from upstream, and until it does, a port keeps bringing it back and these keep taking it out. No rule spells it: {USER} and {User} expand from the account the port runs under."
   ],
   "substitutions": [
+    {
+      "why": "download_dir's absent-folder comment names ~/Downloads and the POSIX home layout. On Windows the folder is the shell's FOLDERID_Downloads, which Explorer can relocate onto another drive, so the comment explains the Windows case instead. The block is add-only against ported_from (Linux grew it after the base), so a hand edit cannot merge-carry it without re-conflicting; this rewrites Linux's version into the Windows one after the merge. Idempotent: the replacement names no ~/Downloads, so it never matches itself.",
+      "files": [
+        "browser.py"
+      ],
+      "find": "            # here, and so does a machine with no ~/Downloads at all.\n            # Then save_article, the subtitle export and every ordinary\n            # download write into a folder that is not there.\n            #\n            # It hides on any machine that happens to have ~/Downloads,\n            # which is nearly all of them, so this is an environment\n            # the suite has to make rather than find: see",
+      "replace": "            # here, and so does a machine with no Downloads folder at\n            # all. Then save_article, the subtitle export and every\n            # ordinary download write into a folder that is not there.\n            #\n            # On Windows DOWNLOAD_DIR is whatever the shell's\n            # FOLDERID_Downloads answers (see _windows_downloads), and\n            # Explorer lets anyone move that onto another drive:\n            # Properties > Location. A moved Downloads on a disk that\n            # is not mounted is the same absent folder as the two above.\n            #\n            # It hides on any machine that happens to have a Downloads\n            # folder, which is nearly all of them, so this is an\n            # environment the suite has to make rather than find: see",
+      "_min_why": "fires once the first time a base below this block is ported (Linux's version comes through the clean merge); merge-carried as the Windows version on every port after, so zero is normal and the marker 'a moved Downloads on an unmounted drive is the same absent folder' is what enforces the result.",
+      "min": 0
+    },
     {
       "why": "UI font stack: Windows has no Inter fallback worth having, and no JetBrains Mono unless the user installed it. Cascadia Mono ships with Windows Terminal, Consolas with Windows itself.",
       "files": [
@@ -586,6 +598,46 @@
       "min": 0,
       "why": "prose in shipped source, theme_web.py",
       "_min_why": "zero is the healthy reading: once upstream drops the name these stop firing, and the leak guard is what enforces the result."
+    },
+    {
+      "why": "Windows badge, not Linux's: the README comes from the Linux repo through the merge, so its header badge says Linux. This edition is the Windows one.",
+      "files": [
+        "README.md"
+      ],
+      "find": "[![Linux](https://img.shields.io/badge/linux-%E2%9C%93-cba6f7?style=flat-square)](#install)",
+      "replace": "[![Windows](https://img.shields.io/badge/windows-%E2%9C%93-cba6f7?style=flat-square)](#install)",
+      "_min_why": "README is a merge_file taken from Linux fresh each port, so the Linux text this rewrites is present every time and the rule fires; after it runs the Linux form is gone, so it is idempotent. The README markers are what enforce the result.",
+      "min": 0
+    },
+    {
+      "why": "Where user data lives. The Linux README writes the POSIX data directory; on Windows it is %LOCALAPPDATA%\\\\browser. Catches it in the overview, the configuration table and the uninstall note in one rule.",
+      "files": [
+        "README.md"
+      ],
+      "find": "~/.local/share/browser/",
+      "replace": "%LOCALAPPDATA%\\browser\\",
+      "_min_why": "README is a merge_file taken from Linux fresh each port, so the Linux text this rewrites is present every time and the rule fires; after it runs the Linux form is gone, so it is idempotent. The README markers are what enforce the result.",
+      "min": 0
+    },
+    {
+      "why": "The install section is Linux's (git clone, install.sh, a package manager). On Windows the install is BrowserSetup.exe or install.bat, the run line is 'py -3 browser.py', and the paths are %LOCALAPPDATA%. The whole section is replaced rather than patched line by line.",
+      "files": [
+        "README.md"
+      ],
+      "find": "## Install\n\n```sh\ngit clone https://github.com/idkhowtonamemyselfasadev/browser.git\ncd browser\n./install.sh\n```\n\n`install.sh` installs PyQt6 WebEngine through your package manager (dnf, apt or pacman,\nwith pip as a fallback) and registers a desktop entry with an icon.\n\nTo run it without installing:\n\n```sh\npython3 browser.py\n```\n\n**Requirements:** Python 3 and PyQt6 WebEngine.\n\nEncrypted streams (Netflix, Spotify, Amazon Music) also play: if Chrome is present, the\nbrowser locates its Widevine module and points the engine at it. Nothing is downloaded or\ninstalled, and an absent Chrome means only that DRM-protected media will not play.",
+      "replace": "## Install\n\n### The easy way: BrowserSetup.exe\n\n[**Download BrowserSetup.exe**](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest/download/BrowserSetup.exe) — one file, with Python and Qt inside it, so there is nothing else to install. The releases page shows its exact size.\n\n**Windows will try to stop you. Here is how to get past it.**\n\nBecause this installer is not signed with a paid certificate, Windows shows a blue\nfull-screen page first:\n\n> **Windows protected your PC**\n> Microsoft Defender SmartScreen prevented an unrecognised app from starting.\n\nThe only button on that page says **Don't run**. The way through is the small\n**More info** link *above* the button:\n\n1. Click **More info**.\n2. A line appears: *Publisher: Unknown publisher*.\n3. Click the new **Run anyway** button.\n\nThat is the whole wall. SmartScreen is saying it does not recognise the publisher —\nnot that it found anything wrong in the file. It says the same about the first build\nof any program nobody has paid to sign.\n\n**What it costs on disk.** The download is one file of about 125 MB, and\ninstalled it takes **425 MB** — most of that is QtWebEngine, the browser\nengine itself, which is 54.7 MB of the download compressed and cannot be\nleft out. Your own data (`%LOCALAPPDATA%\\browser`) starts at a few\nhundred KB and grows with your history and bookmarks.\n\nThen the installer runs. It:\n\n- installs into `%LOCALAPPDATA%\\Programs\\Browser`, **for your user only — no admin prompt**;\n- puts one **Browser** entry in the Start menu, so typing `brow` into Start finds it;\n- adds a desktop shortcut if you tick the box;\n- keeps your data in `%LOCALAPPDATA%\\browser`, and leaves it there if you uninstall.\n\nUninstall through **Settings → Apps → Installed apps → Browser**.\n\nThe exe does not update itself. A new version is a new installer from the\n[releases page](https://github.com/idkhowtonamemyselfasadev/browser-windows/releases/latest).\nEvery push to `main` builds one (`.github/workflows/build-exe.yml`), and each release\nlists the SHA-256 of its installer if you want to check the download with\n`Get-FileHash BrowserSetup.exe`.\n\n### The other way: from source\n\nDownload this repository (**Code → Download ZIP**), unzip it somewhere permanent, and run\n**`install.bat`**. It fetches Python through winget if it is missing, installs PyQt6\nWebEngine, and puts a *Browser* shortcut on the desktop. The shortcut starts the same\nPython that pip installed into, which matters on a machine with more than one.\n\nTo run it without installing anything:\n\n```\npy -3 browser.py\n```\n\nRequirements: Python 3 and PyQt6 WebEngine.\n\nIf the desktop shortcut ever loses its icon and stops responding, the folder has been\nmoved or renamed — run `install.bat` again from its new location to rebuild it.",
+      "_min_why": "README is a merge_file taken from Linux fresh each port, so the Linux text this rewrites is present every time and the rule fires; after it runs the Linux form is gone, so it is idempotent. The README markers are what enforce the result.",
+      "min": 0
+    },
+    {
+      "why": "The Linux README ends with a short pointer to the Windows edition. Here that is turned around: this IS the Windows edition, so the pointer goes to the Linux repo, and the two sections this edition needs -- 'What is not here' (the Linux-desktop features and how they fare here) and the port tooling that regenerates this tree -- live here. Carries the vault-ACL note and tools/win_port.py for their markers.",
+      "files": [
+        "README.md"
+      ],
+      "find": "## Windows\n\nA Windows edition with the same feature set is maintained at\n[idkhowtonamemyselfasadev/browser-windows](https://github.com/idkhowtonamemyselfasadev/browser-windows).",
+      "replace": "## What is not here\n\nEverything in the feature list above is in this edition. These are the\nhandful of things that are Linux's rather than the browser's, and what\nhappens to them here:\n\n| On Linux | Here |\n|---|---|\n| **The media keys** (MPRIS over D-Bus) — the desktop asks what is playing | Not answered. MPRIS is a protocol of the Linux desktop; `mpris.py` is not shipped, and the Settings row says so |\n| **The engine pane** (`Ctrl+Shift+E`), which renders a page through a from-scratch engine | Not here: it loads a native module built on that machine |\n| **Driving the browser from a script** (the agent bridge) | Not here yet: it listens on a Unix socket, and a named pipe is a job of its own |\n| **KDE Connect** (send a page to the phone) and **hyprctl** (window rules) | Not there to ask; the entries stay out of the menu, as they do on a Linux desktop without them |\n| **Memory pressure** on the \"what this is costing\" page | Empty: Windows has no counter for \"was anything stalled waiting for memory\", and the one it has answers a different question |\n| **Which graphics card draws the pages** | Listed, not chosen — Windows keeps that per program in Settings → System → Display → Graphics, and the program here is `python.exe`, shared with every Python program on the machine |\n| **Keeping the screen awake** through systemd-inhibit | The same promise, through `SetThreadExecutionState` |\n| **Reading a page aloud** through speech-dispatcher | The same, through the synthesiser in .NET |\n| **An address another program owns** (`discord:`, `magnet:`) looked up by program name | Handed to the shell, which is what keeps that register here |\n| **Desktop notifications** through notify-send | The browser's own line in the window; a Windows toast needs an app registration a script does not have |\n\nAnything that is a *program* rather than a desktop service — mpv, VLC,\nyt-dlp, ffmpeg, ClamAV, the 1Password CLI — is found on the PATH here\nexactly as it is there, and the feature is present when the program is.\n\n## This edition and the Linux one\n\nThe Linux edition, with the same feature set, is maintained at\n[idkhowtonamemyselfasadev/browser](https://github.com/idkhowtonamemyselfasadev/browser).\n\nThis edition is a regeneration of it, not a fork. Every feature is written\nthere and arrives here; the only things that belong to this repository are a\nhandful of Windows-specific regions — where data is stored, the zip updater,\nthe file ACL on the vault, the taskbar identity and the font stacks.\n\n### Bringing it up to date\n\n```\ntools/win_port.py --to <linux-commit> --dry-run   # report, write nothing\ntools/win_port.py --to <linux-commit>             # regenerate\ntools/win_port.py --check                         # this tree, and how far behind it is\n```\n\n`browser.py` is a three-way merge against the Linux commit this tree was last\ngenerated from (`tools/win_port.json` records it), so the Windows regions sit\non our side of the merge and survive. The pages and the test suite are copied\nfrom the same commit and the font stacks are substituted; then every Windows\nregion has to prove it is still there, or nothing is written at all.",
+      "_min_why": "README is a merge_file taken from Linux fresh each port, so the Linux text this rewrites is present every time and the rule fires; after it runs the Linux form is gone, so it is idempotent. The README markers are what enforce the result.",
+      "min": 0
     }
   ],
   "_markers_readme": [
@@ -747,7 +799,7 @@
     {
       "file": "tests/harness.py",
       "name": "harness scratch is per-process",
-      "pattern": "browser-pwtest-%d\" % os\\.getpid\\(\\)",
+      "pattern": "tmpscratch\\.claim\\(\"browser-pwtest-\"\\)",
       "count": 1
     },
     {

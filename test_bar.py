@@ -139,9 +139,9 @@ check("a two-part country domain keeps three labels",
       == "example.co.uk",
       B.bar_domain_parts("https://shop.example.co.uk/x"))
 check("an IP address is the domain",
-      B.bar_domain_parts("http://192.168.1.50:7860/x")[1]
-      == "192.168.1.50",
-      B.bar_domain_parts("http://192.168.1.50:7860/x"))
+      B.bar_domain_parts("http://192.0.2.50:7860/x")[1]
+      == "192.0.2.50",
+      B.bar_domain_parts("http://192.0.2.50:7860/x"))
 check("something that is not an address has no domain",
       B.bar_domain_parts("just some words") == ("just some words", "", ""),
       B.bar_domain_parts("just some words"))
@@ -216,7 +216,7 @@ check("a path is not", B.looks_like_search("/home/you/x") is False)
 check("a Windows path is not", B.looks_like_search("C:\\\\Users\\\\x")
       is False)
 check("an e-mail address is not",
-      B.looks_like_search("you@example.com") is False)
+      B.looks_like_search("ada@example.com") is False)
 check("a long token is not",
       B.looks_like_search("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9") is False)
 check("a card-shaped number is not",
@@ -239,11 +239,11 @@ check("a base can be asked for by its long name",
       B.bar_answer("31 to binary")[1] == "0b11111",
       B.bar_answer("31 to binary"))
 check("a network is written out",
-      "192.168.1.255" in B.bar_answer("ip 192.168.1.0/24")[0],
-      B.bar_answer("ip 192.168.1.0/24"))
+      "192.0.2.255" in B.bar_answer("ip 192.0.2.0/24")[0],
+      B.bar_answer("ip 192.0.2.0/24"))
 check("...with how many addresses are in it",
-      "254" in B.bar_answer("ip 192.168.1.0/24")[0],
-      B.bar_answer("ip 192.168.1.0/24"))
+      "254" in B.bar_answer("ip 192.0.2.0/24")[0],
+      B.bar_answer("ip 192.0.2.0/24"))
 check("a /32 is answered too",
       B.bar_answer("ip 10.0.0.1/32") is not None)
 check("nonsense is not answered", B.bar_answer("ip not.an.ip/99") is None)
@@ -276,7 +276,14 @@ print("\n(9) the bar as a widget")
 bar = win.urlbar
 check("it is the browser's own line edit",
       isinstance(bar, B.UrlBar), type(bar).__name__)
-check("the progress starts at nothing", bar.progress() == 0)
+# The launch tab is still loading start.html when this section is
+# reached: sections (1)-(8) are pure-function checks and run in a few
+# milliseconds, far quicker than the start page finishes, so the bar
+# legitimately showed 0.7 here. Wait for the page the line belongs to
+# instead of asserting into the middle of its load.
+H.wait_for(lambda: bar.progress() == 0, timeout=8000)
+check("the progress starts at nothing", bar.progress() == 0,
+      bar.progress())
 check("it takes a fraction", bar.set_progress(0.4) == 0.4)
 check("...and clamps what is over one", bar.set_progress(4) == 1.0)
 check("...and zero means nothing is loading", bar.set_progress(0) == 0)
@@ -663,6 +670,56 @@ win.config["barProgress"] = False
 check("it can be switched off",
       win.bar_progress(50, win.current()) == 0)
 win.config["barProgress"] = True
+# loadProgress hands out a percent, always. The bar used to guess, and
+# treated anything <= 1 as a finished fraction: 1% flashed a full bar.
+check("one percent is one percent, not a full bar",
+      win.bar_progress(1, win.current()) == 0.01,
+      win.bar_progress(1, win.current()))
+check("...and ninety-nine is not finished either",
+      win.bar_progress(99, win.current()) == 0.99,
+      win.bar_progress(99, win.current()))
+
+# Switching away from a half-loaded tab left its line standing in the
+# bar for good: that tab's own loadFinished(0) lands when it is no
+# longer in front and was dropped, and nothing else cleared the bar.
+#
+# Every tab in this block has to be a tab that is NOT loading, because
+# the thing under test is what the bar does on a switch and a real load
+# writes the bar legitimately. `new_tab(url=None)` is not an empty tab
+# -- url=None means "whatever an empty tab opens on", so it loads the
+# start page and reports its progress like any other page. That made
+# these checks fail about one run in twelve with the bar reading 0.7:
+# not the switch failing to clear it, a real loadProgress(70) from the
+# new tab, honoured exactly as intended. `blank=True` is the one that
+# opens a tab and loads nothing (see `if not blank:` in new_tab).
+H.wait_for(lambda: win.urlbar.progress() == 0, timeout=8000)
+loading = win.current()
+win.bar_progress(60, loading)
+check("a loading tab puts its line up", win.urlbar.progress() == 0.6,
+      win.urlbar.progress())
+fresh = win.new_tab(url=None, blank=True)
+H.spin(150)
+check("the new tab is loading nothing of its own",
+      not fresh.url().toString(), fresh.url().toString())
+check("switching to another tab takes the line down",
+      win.urlbar.progress() == 0, win.urlbar.progress())
+check("...and the old tab finishing in the background leaves it down",
+      win.bar_progress(0, loading) is False
+      and win.urlbar.progress() == 0, win.urlbar.progress())
+win.tabs.setCurrentIndex(win.tabs.indexOf(loading))
+H.spin(150)
+check("...and coming back shows that tab, which is no longer loading",
+      win.urlbar.progress() == 0, win.urlbar.progress())
+win.bar_progress(35, win.current())
+win.tabs.setCurrentIndex(win.tabs.indexOf(fresh))
+H.spin(150)
+check("a tab still loading when you leave it keeps its own place",
+      win.urlbar.progress() == 0, win.urlbar.progress())
+win.tabs.setCurrentIndex(win.tabs.indexOf(loading))
+H.spin(150)
+check("...and shows it again when you come back",
+      abs(win.urlbar.progress() - 0.35) < 0.001, win.urlbar.progress())
+win.bar_progress(0, win.current())
 
 print("\n(26) a site that offers its own search")
 site = page("/searchable")

@@ -33,6 +33,7 @@ Needs Qt only to import browser.py; opens no window, keeps no data,
 writes nothing. Run with HOME pointed at a throwaway directory like
 everything else here.
 """
+import argparse
 import ast
 import collections
 import os
@@ -41,11 +42,26 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE
+
+ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+ap.add_argument("--dir", metavar="PATH", default=None,
+                help="an edition's folder to check instead of this one "
+                     "(default: this tree)")
+ARGS = ap.parse_args()
+REPO = Path(ARGS.dir).expanduser().resolve() if ARGS.dir else HERE
+MINE = REPO == HERE
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("BROWSER_NO_LIB_CHECK", "1")
+# the tree being checked goes FIRST, so `import browser` is that
+# edition's and not this one's. Reading only: nothing is written into
+# it, and the answer comes back here.
 sys.path.insert(0, str(REPO))
+if not MINE:
+    print("    (%s)" % REPO)
+    if not (REPO / "browser.py").is_file():
+        print("  FAIL no browser.py in  <%s>" % REPO)
+        sys.exit(1)
 
 fails = []
 
@@ -125,8 +141,14 @@ check("...so nothing still asks for it", not USED.get(gone, 0),
       USED.get(gone, 0))
 # and the trap that caught this suite on the way in, kept as a check:
 # the fix is explained in a comment that contains the call it replaced.
-check("...and a comment naming it is not read as a call",
-      'theme_color("%s")' % gone in SRC, "the fixture comment is gone")
+if MINE:
+    # upstream's own documentation, not every edition's: this asserts
+    # that the COMMENT explaining the base->bg fix is still in the file
+    # and still not read as a call. Another tree is not required to
+    # carry this tree's comments, so pointing --dir at one must not
+    # fail on their absence.
+    check("...and a comment naming it is not read as a call",
+          'theme_color("%s")' % gone in SRC, "the fixture comment is gone")
 
 
 print()
@@ -157,6 +179,68 @@ if veil:
     check("...so it differs from black on the light themes",
           all(B.theme_color(token, n).lower() not in ("#000000", "#000")
               for n in light), "%d light themes" % len(light))
+
+print()
+print("(4) and every colour the PAGES hard-code is one somebody chose")
+# The nine pages are themed by substitution too: theme_payload() hands
+# the page a map from each Mocha literal to the palette's, and a
+# literal that is in no palette is simply left as written -- on all 116
+# themes. That is how mictest.html's #meter track stayed near-black
+# behind a themed green fill on the 30 light ones.
+#
+# Some literals genuinely should not move, so they are pinned by name
+# with a reason rather than tolerated in silence, the same way
+# test_bridgecalls pins the Bridge methods it allows to be missing.
+PAGE_LITERALS = {
+    "#05050a": "the stage a video sits on. Near-black is the convention "
+               "for video and film, light theme or not -- a letterboxed "
+               "frame should not glow.",
+}
+
+#: a comment is not a rule. Stripped before the scan because this
+#: suite has now been caught by its own documentation three times in
+#: one day: the comment explaining theme_color("base"), the comment
+#: explaining refreshSettings(), and the comment explaining this very
+#: literal. A note naming the colour that USED to be there matches a
+#: regex exactly as hard as the colour itself.
+CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+HEXLIT = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+
+
+def page_literals(text):
+    body = HTML_COMMENT.sub(" ", CSS_COMMENT.sub(" ", text))
+    return {m.group(0).lower() for m in HEXLIT.finditer(body)}
+
+
+pages = sorted(REPO.glob("*.html"))
+check("the nine pages are there", len(pages) == 9, len(pages))
+swappable = {v.lower() for v in B.THEME_SOURCE.values()}
+unpinned = {}
+for page in pages:
+    for lit in sorted(page_literals(page.read_text(encoding="utf-8"))):
+        if lit not in swappable and lit not in PAGE_LITERALS:
+            unpinned.setdefault(page.name, []).append(lit)
+check("no page hard-codes a colour nobody declared", not unpinned, unpinned)
+for lit, why in sorted(PAGE_LITERALS.items()):
+    where = sorted(p.name for p in pages
+                   if lit in page_literals(p.read_text(encoding="utf-8")))
+    if MINE:
+        # the pin is this tree's declaration; an edition that has not
+        # ported a page yet is not stale, it is behind
+        check("the pinned %s is still used, so the pin is not stale" % lit,
+              bool(where), where)
+    print("       declared: %s (%s) -- %s"
+          % (lit, ", ".join(where) or "not in this tree", why))
+
+# and it has to be able to find one, and to ignore one that is only
+# being talked about
+check("a hard-coded colour in a rule is found",
+      "#ff00ff" in page_literals("<style>b { color: #ff00ff; }</style>"))
+check("...and the same colour inside a CSS comment is not",
+      "#ff00ff" not in page_literals("<style>/* was #ff00ff */</style>"))
+check("...nor inside an HTML comment",
+      "#ff00ff" not in page_literals("<!-- it was #ff00ff -->"))
 
 print()
 if fails:
