@@ -57,19 +57,20 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        # Pin PyQt6 and PyQt6-WebEngine (and both Qt6 payload packages) to ONE
-        # Qt version. Unpinned `--upgrade` let them drift apart: pip took the
-        # newest PyQt6 (one Qt minor) and the newest PyQt6-WebEngine (an older
-        # minor, since WebEngine lags). The bundled Qt6WebEngineCore.dll then
-        # imports a procedure from Qt6Core.dll that only exists in its own minor,
-        # so the installed exe dies on launch with:
+        # Pin the two Qt6 DLL payloads to the SAME version, and the bindings to
+        # the same minor. Unpinned `--upgrade` let PyQt6 and PyQt6-WebEngine
+        # resolve to different Qt minors (newest PyQt6 is one minor ahead of the
+        # newest PyQt6-WebEngine), so the bundled Qt6WebEngineCore.dll imported a
+        # procedure that only exists in a different minor's Qt6Core.dll and the
+        # installed exe died on launch with:
         #   ImportError: DLL load failed while importing QtWebEngineCore:
         #   the specified procedure was not found.
-        # Keeping all four on the same version makes the DLLs agree. Bump this
-        # pin together (all four) when moving to a newer Qt.
+        # Same version for both *-Qt6 payloads => the DLLs agree. The 6.9 line is
+        # the newest that still ships wheels for Python 3.13. Bump all four
+        # together when moving to a newer Qt.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller PyQt6==6.8.0 PyQt6-Qt6==6.8.0 PyQt6-WebEngine==6.8.0 PyQt6-WebEngine-Qt6==6.8.0
+          python -m pip install pyinstaller PyQt6-Qt6==6.9.2 PyQt6-WebEngine-Qt6==6.9.2 PyQt6~=6.9.0 PyQt6-WebEngine~=6.9.0
 
       - name: Build Browser folder
         run: >
