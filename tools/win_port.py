@@ -50,6 +50,21 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 MANIFEST = HERE / "win_port.json"
 
+#: The branch a port and a drift report measure against.
+#:
+#: This was `main`, and `main` is the wrong answer: it is a local branch
+#: nobody fetches, so in a checkout left behind by a force-push it can
+#: be a hundred commits stale while origin/main is current. Not
+#: hypothetical -- the five suites this edition had to adopt by hand
+#: (win_port.json: adopted_pending) were in the port base the whole
+#: time, and `--to main` could not see them, because the linux_repo's
+#: local main is 88 commits behind its own origin/main. The report
+#: below has described that state as "stale main" for a while and told
+#: whoever read it to pass `--to origin/main` by hand. A warning that
+#: is right and that nobody has to act on is not the same as being
+#: right by default.
+UPSTREAM = "origin/main"
+
 
 class PortError(Exception):
     pass
@@ -303,21 +318,41 @@ def soft(repo, *args):
     return out.stdout.strip() if out.returncode == 0 else None
 
 
-def ancestor_of(repo, rev, branch="main"):
+def upstream_of(repo, want=UPSTREAM):
+    """The ref to measure against in this repo, or the local branch when
+    there is no remote one.
+
+    A checkout with no origin has no origin/main, and answering
+    "unknown" there would throw away an answer `main` can give
+    perfectly well.
+    """
+    if soft(repo, "rev-parse", "--verify", "--quiet", want) is not None:
+        return want
+    return "main"
+
+
+def ancestor_of(repo, rev, branch=None):
     """Is this commit actually on that branch's line of history?
 
     Asked separately from "how far behind", because a count of zero
     answers both "the base is the branch tip" and "the base is nowhere
     near it" with the same number. git merge-base --is-ancestor is the
     only one of the two that distinguishes them.
+
+    branch defaults to whatever upstream_of makes of THIS repo, not to
+    the UPSTREAM literal: a repo with no remote would otherwise be
+    measured against a ref it does not have, and every answer would
+    come back "unrelated" -- which is what the first cut of this did to
+    test_portbase's synthetic repos.
     """
+    branch = branch or upstream_of(repo)
     out = subprocess.run(
         ["git", "-C", str(repo), "merge-base", "--is-ancestor", rev, branch],
         capture_output=True, text=True)
     return out.returncode == 0
 
 
-def twin(repo, base, branch="main"):
+def twin(repo, base, branch=None):
     """The post-rewrite twin of a base, if that is what happened to it.
 
     A history rewrite -- `git filter-branch` over the whole repo, then
@@ -341,6 +376,7 @@ def twin(repo, base, branch="main"):
     if not want or "\0" not in want:
         return None
     adate, subject, tree = want.split("\0", 2)
+    branch = branch or upstream_of(repo)
     rows = soft(repo, "log", branch, "--format=%H%x00%aI%x00%s%x00%T")
     if not rows:
         return None
@@ -358,7 +394,7 @@ def twin(repo, base, branch="main"):
     return None
 
 
-def relation(repo, base, branch="main"):
+def relation(repo, base, branch=None):
     """How the recorded base sits against a branch, as one of four words.
 
     "on"        an ancestor of main, which is what a base is supposed to
@@ -373,6 +409,7 @@ def relation(repo, base, branch="main"):
     "unrelated" no common ancestor at all. Nothing here is a base of
                 anything, and a three-way merge against it is guesswork.
     """
+    branch = branch or upstream_of(repo)
     if ancestor_of(repo, base, branch):
         return "on"
     if soft(repo, "rev-list", "--count",
@@ -402,15 +439,33 @@ def drift(manifest):
         return ["  linux repo   %s is not a git repo, so drift is unknown"
                 % linux]
     branch = soft(linux, "rev-parse", "--abbrev-ref", "HEAD")
+    ref = upstream_of(linux)
     out = ["  linux repo   %s  (HEAD %s%s)"
-           % (linux, head, " on " + branch if branch else "")]
+           % (linux, head, " on " + branch if branch else ""),
+           "  measured vs  %s" % ref]
+    # The branch that used to be the default, when it is not the ref we
+    # measured against: the state that produced adopted_pending, said
+    # out loud rather than left to be discovered.
+    # BOTH directions, and in the right one: `A..B` counts what B has
+    # and A lacks, so main's own commits are `ref..main`. The first cut
+    # of this printed that count under the word "behind", which is the
+    # same kind of mislabelled diagnostic this whole change is about.
+    lagging = soft(linux, "rev-list", "--count",
+                   "main..%s" % ref) if ref != "main" else None
+    leading = soft(linux, "rev-list", "--count",
+                   "%s..main" % ref) if ref != "main" else None
+    if (lagging and lagging != "0") or (leading and leading != "0"):
+        out.append("  note         this repo's local main is %s behind and "
+                   "%s ahead of %s" % (lagging or "?", leading or "?", ref))
+        out.append("               a port reads %s, so that does not "
+                   "affect it" % ref)
     if soft(linux, "cat-file", "-t", base) != "commit":
         out.append("  behind       unknown: ported_from %s is not a commit "
                    "in that repo" % base[:9])
         return out
-    behind = soft(linux, "rev-list", "--count", "%s..main" % base)
+    behind = soft(linux, "rev-list", "--count", "%s..%s" % (base, ref))
     if behind is None:
-        out.append("  behind       unknown: no main branch in that repo")
+        out.append("  behind       unknown: no %s in that repo" % ref)
     elif (how := relation(linux, base)) != "on":
         # "ported_from..main" being empty says nothing on its own: it is
         # equally true of a base that IS main and of one that is nowhere
@@ -418,30 +473,32 @@ def drift(manifest):
         # to print "level with main" for a base that was never on main.
         # The same lie d7ee8a1 took off the marker side, arriving the
         # second time through the base pointer.
-        ahead = soft(linux, "rev-list", "--count", "main..%s" % base) or "?"
+        ahead = soft(linux, "rev-list", "--count",
+                     "%s..%s" % (ref, base)) or "?"
         if how == "ahead":
             out.append("  behind       UNKNOWN: ported_from %s is a "
-                       "DESCENDANT of main, not an ancestor" % base[:9])
-            out.append("               main is %s commit(s) behind it, so "
-                       "ported_from..main is empty" % ahead)
+                       "DESCENDANT of %s, not an ancestor" % (base[:9], ref))
+            out.append("               %s is %s commit(s) behind it, so "
+                       "ported_from..%s is empty" % (ref, ahead, ref))
             out.append("               and this line used to read \"level "
                        "with main\". Nothing is level.")
         elif how == "unrelated":
             out.append("  behind       UNKNOWN: ported_from %s shares NO "
-                       "history with main here" % base[:9])
-            out.append("               no common ancestor at all: main has "
-                       "%s commit(s) it lacks, it has %s main lacks"
-                       % (behind, ahead))
+                       "history with %s here" % (base[:9], ref))
+            out.append("               no common ancestor at all: %s has "
+                       "%s commit(s) it lacks, it has %s that %s lacks"
+                       % (ref, behind, ahead, ref))
             out.append("               a three-way merge against that base "
                        "is guesswork, not a port")
         else:
-            out.append("  behind       DIVERGED: main has %s commit(s) "
-                       "ported_from lacks," % behind)
-            out.append("               and ported_from has %s that main "
-                       "lacks. The count is real, but a port" % ahead)
-            out.append("               carries main's side only.")
+            out.append("  behind       DIVERGED: %s has %s commit(s) "
+                       "ported_from lacks," % (ref, behind))
+            out.append("               and ported_from has %s that %s "
+                       "lacks. The count is real, but a port"
+                       % (ahead, ref))
+            out.append("               carries %s's side only." % ref)
             out.append("               see them: tools/win_port.py --to "
-                       "main --dry-run")
+                       "%s --dry-run" % ref)
         where = soft(linux, "branch", "-a", "--contains", base)
         if where:
             first = where.splitlines()[0].strip().lstrip("* ").strip()
@@ -453,20 +510,21 @@ def drift(manifest):
         # the branch being measured against is the stale one. That is the
         # state of ~/browser, whose main shares no history with its own
         # origin/main.
-        if relation(linux, base, "origin/main") == "on":
+        if ref != "main" and relation(linux, base, "main") == "on":
             short = soft(linux, "rev-list", "--count",
-                         "%s..origin/main" % base) or "?"
-            out.append("  stale main   the base IS on origin/main (%s commit"
-                       "(s) behind it)." % short)
-            out.append("               This repo's local main is the branch "
-                       "left behind, not the base.")
-            out.append("               measure with: --to origin/main")
+                         "%s..main" % base) or "?"
+            out.append("  stale ref    the base IS on this repo's local main "
+                       "(%s commit(s) behind it)," % short)
+            out.append("               but not on %s. One of the two "
+                       "branches is the one left behind;" % ref)
+            out.append("               check which before pointing "
+                       "ported_from anywhere.")
         else:
             # A rewrite: the base's replacement is findable, not
             # guessable. Tried on origin/main too, because a clone whose
             # local main was left behind by the force-push has the
             # rewritten lineage only on the remote-tracking branch.
-            got = twin(linux, base) or twin(linux, base, "origin/main")
+            got = twin(linux, base) or twin(linux, base, "main")
             if got:
                 sha, nfiles, found_on = got
                 out.append("  rewritten    %s looks like the PRE-REWRITE "
@@ -478,18 +536,19 @@ def drift(manifest):
                 out.append("               check it, then point ported_from "
                            "at %s" % sha[:9])
             elif how == "ahead":
-                out.append("               a port --to main would port "
-                           "backwards; point ported_from at a commit on main")
+                out.append("               a port --to %s would port "
+                           "backwards; point ported_from at a commit "
+                           "on %s" % (ref, ref))
             elif how == "unrelated":
                 out.append("               point ported_from at a commit "
-                           "this repo's main can actually reach")
+                           "%s can actually reach" % ref)
     elif behind == "0":
-        out.append("  behind       nothing: this tree is level with main")
+        out.append("  behind       nothing: this tree is level with %s" % ref)
     else:
-        out.append("  behind       %s commit(s) of main, ported_from is %s"
-                   % (behind, base[:9]))
-        out.append("               see them: tools/win_port.py --to main "
-                   "--dry-run")
+        out.append("  behind       %s commit(s) of %s, ported_from is %s"
+                   % (behind, ref, base[:9]))
+        out.append("               see them: tools/win_port.py --to %s "
+                   "--dry-run" % ref)
     # Uncommitted work in the source is invisible to a port: generate()
     # reads blobs out of commits (git show <rev>:<path>), never the
     # working tree. A feature sitting there unstaged cannot be ported at
@@ -519,8 +578,8 @@ def verify(files, manifest, verbose=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--to", help="Linux commit to port (default: main)",
-                    default="main")
+    ap.add_argument("--to", default=UPSTREAM,
+                    help="Linux commit to port (default: %s)" % UPSTREAM)
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would happen, write nothing")
     ap.add_argument("--check", action="store_true",

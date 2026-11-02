@@ -187,15 +187,21 @@ check("the tree as it stands passes every marker", not baseline,
 # that produces it. A hand-resolved merge conflict is exactly this: one
 # region ending up with the other side's text, or with nothing.
 REGRESSIONS = [
+    # The two subnet anchors name 192.0.2.x, the documentation range,
+    # because that is what upstream's examples use now -- the calculator
+    # hint and the host-override suite both moved off 192.168.1.x. An
+    # anchor that has moved makes the simulation stop being the
+    # regression it claims to be, which is why the loop below fails
+    # loudly on a missing one instead of skipping it quietly.
     ("his subnet back in browser.py",
-     "browser.py", "ip 192.168.1.0/24", "ip %s0/24" % LAN),
+     "browser.py", "ip 192.0.2.0/24", "ip %s0/24" % LAN),
     ("the host-override hint back to his LAN, both languages",
      "browser.py", "example.com 192.0.2.10.", "example.com %s10." % LAN),
     ("his home directory back in the settings page",
      "settings.html", 'placeholder="C:\\Users\\You\\Notes"',
      'placeholder="%s/Notes"' % HOME),
     ("his subnet back in a suite",
-     "test_dev.py", "192.168.1.10", "%s10" % LAN),
+     "test_dev.py", "192.0.2.10", "%s10" % LAN),
     ("his home directory back in a suite",
      "test_bar.py", "/home/you/x", "%s/x" % HOME),
     # The history page's icon bridge. ~/browser has these in its working
