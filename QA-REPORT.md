@@ -1756,6 +1756,39 @@ the argument for a frequency column, and against reading one as a ranking.
 So: **one instance, in a look-specific widget, at 3 ticks a minute.** A clean
 sweep is a result too, and this one is nearly clean.
 
+### Why the cross-edition run was the control, and what actually worked
+
+Recorded because it is more reusable than the bug. **Six of this sweep's own
+defects were found by browser-mac running the tool on its tree and reading the
+output** — the one-shot conflation, the `lambda`-as-a-callback-name miscount,
+`scan()` returning on the first of several definitions, the dropped anonymous
+`singleShot` sites, lambdas being resolvable at all, and `"singleShot" in body`
+as a re-arm test. **None was found by re-reading the code here.** Every count
+this section published moved at least once: 64, 42, 40/4, 40/5, 45/5 twice.
+`_show_time` and the single defect never moved.
+
+Two things made that possible, and the second is the one worth keeping:
+
+* **A second tree disagrees where one tree cannot.** `forget` resolving to the
+  wrong definition only showed up because mac has eight `forget*` names and
+  this tree has two. A single-edition count has nothing to contradict it.
+* **The instrument travelled, not the finding.** mac's words, and they are
+  right: what was sent was the script and its raw output, not a conclusion.
+  A report would have given them nothing to disagree with. Every correction
+  above came from someone reading output, so the output had to be in their
+  hands — which is the argument for shipping tools between editions rather
+  than findings.
+
+**Converged, and deliberately stopped.** The five candidates now map one-to-one
+onto the reasons mac had reasoned out by hand before either tool could see
+them — tool and reader agreeing by different routes. mac also verified the two
+reclassifications **moved** rather than vanished (`new_tab` and
+`_drop_private_profile` appear in the one-shot section; `_translate_step` is
+still flagged `[re-arms]`), which is the destructive-direction check on an
+independent tree: the AST fix did not simply shrink the list. Six revisions in,
+further iteration stops buying confidence, so the sweep stops here rather than
+fishing for a seventh.
+
 ---
 
 ## W-B07 is not a product call — the fix has four precedents in the same file
