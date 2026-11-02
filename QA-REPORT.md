@@ -1541,10 +1541,10 @@ constructs (locale and formatter construction, regex compile, `setStyleSheet`
 re-parse, font metrics, full teardown, subprocess, file read, pixmap decode):
 
     40 REPEATING callbacks (timeout.connect, or a singleShot that re-arms)
-     4 contain a costly construct
+     5 contain a costly construct
      1 is the defect shape
-    25 one-shot singleShot targets, listed separately -- NOT the shape
-     7 arming sites UNRESOLVED -- lambda / closure / attribute targets
+    26 one-shot singleShot targets, listed separately -- NOT the shape
+    64 arming sites UNRESOLVED -- lambda / partial / expression targets
 
 **Corrected, 2026-11-02, after browser-mac read the output.** The first run of
 this sweep reported *"64 callbacks, 8 with a costly construct"*. That figure
@@ -1573,12 +1573,42 @@ Unresolvable names are now counted as **unresolved arming sites** and printed
 on their own line — 7 here. That turns the tool's reach from a paragraph
 nobody re-reads into a number that moves when the regex changes.
 
-**This count has now been wrong three times: 64, then 42, then 40.** Each
-correction came from outside — twice from browser-mac reading the output, once
-from writing a test aimed at the tool's own blind spot. None came from
-re-reading the code, which is the whole pattern of today in one artifact. The
-four hits and the single defect have survived every revision unchanged, which
-is the only reason the conclusion was ever safe to send.
+**Then a fourth time, and this one was a false negative.** browser-mac found
+that `scan()` returned *inside* its loop over a name's definitions, so a
+callback defined more than once resolved to whichever `ast.walk` reached first.
+Both trees define **`forget` twice** — harmless at `18466`, holding a
+`.clear()` at `37960` — and the harmless one is reached first, so the armed
+body was never read and the name came back **clean**. That is worse than the
+lambda bug: not a miscount but a verdict on a body the tool really did read,
+just not the one that fires. Three names here are armed and multiply defined
+(`forget`, `look`, `start`); one was a live false negative, two resolved wrongly
+without consequence.
+
+Both regex legs are gone now, replaced with AST walking — the AST knows a
+`Name` from an `Attribute` from a `Lambda`, which is the whole bug class. That
+immediately showed how bad the old reach number was: the singleShot pattern
+needed a bare name before the closing paren, so **all 43 anonymous
+`QTimer.singleShot(ms, lambda: ...)` sites were dropped before they could even
+be counted as unresolved.** "7 unresolved" was really **64**.
+
+And it surfaced a **fifth** repeating candidate the regex never saw:
+`_translate_step` (`browser.py:55688`), armed at `55711` through a lambda
+inside a `runJavaScript` callback. **Not the shape** — it is a self-terminating
+work-queue pump: it pops one block, re-arms for the next, stops when the queue
+empties, and its `json.dumps` is the work rather than overhead. Same class as
+browser-mac's `Dock._step`. A duplicated name now prints
+`[N DEFS of this name -- verify which one is armed]`, which shows the ambiguity
+instead of resolving it silently.
+
+**So this count has been wrong four times: 64, 42, 40 with 4 hits, 40 with 5.**
+Every correction came from outside — three times from browser-mac reading the
+output, once from writing a test aimed at the tool's own blind spot. **None came
+from re-reading the code.** That is the whole pattern of today in one artifact.
+`_show_time` and the single defect survived all four revisions, which is the
+only reason the conclusion was ever safe to send — and mac's closing point is
+the real lesson: this surfaced because mac's tree has eight `forget*` names and
+this one has two, so the tool had to be run across editions before its own
+count could be trusted.
 
 **The one:** `TaskBar._show_time`, five lines, armed by a 20-second `QTimer` at
 `browser.py:20912`.
@@ -1656,6 +1686,10 @@ Reported because a sweep that only lists its hits cannot be checked:
 * **`_drop_private_profile`** re-arms, so it is correctly in the repeating
   list — but it re-arms off a download *finishing*, which is an event and not
   a tick, and it is guarded twice.
+* **`_translate_step`** re-arms at `singleShot(0, ...)`, which looks worse than
+  anything else on the list, and is a **self-terminating pump**: one block per
+  pass, `return False` the moment the queue is empty. Its `json.dumps` is the
+  payload being sent, not overhead.
 * **`run_scheduled_tabs`**, **`backup_bookmarks`**, **`_check_updates`**,
   **`forget`** are **one-shot** — see the correction above. `backup_bookmarks`
   additionally early-returns when today's file already exists, which is exactly

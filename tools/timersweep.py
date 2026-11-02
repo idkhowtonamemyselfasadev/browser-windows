@@ -78,44 +78,85 @@ COSTLY = {
 }
 
 
-def sweep(src):
-    """(repeating, oneshot, n_repeating, n_oneshot) for one source text.
+def _arming_sites(tree):
+    """(ticking, shot, unresolved) from the AST, not a regex.
 
-    repeating/oneshot are [(name, line, span, [why], rearms, [(line, text)])],
+    Regexes were wrong twice here. `timeout.connect(lambda: self.foo())`
+    matched and yielded the literal name "lambda"; and the singleShot
+    pattern required a bare name before `)`, so all 43 anonymous
+    `QTimer.singleShot(ms, lambda: ...)` sites in this tree were dropped
+    before they could even be counted as unresolved. The AST knows the
+    difference between a Name, an Attribute and a Lambda, so it is asked.
+    """
+    ticking, shot, unresolved = {}, {}, 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        # X.timeout.connect(target)
+        if (isinstance(f, ast.Attribute) and f.attr == "connect"
+                and isinstance(f.value, ast.Attribute)
+                and f.value.attr == "timeout" and node.args):
+            bag, target = ticking, node.args[0]
+        # QTimer.singleShot(ms, target)
+        elif (isinstance(f, ast.Attribute) and f.attr == "singleShot"
+                and len(node.args) >= 2):
+            bag, target = shot, node.args[1]
+        else:
+            continue
+        if isinstance(target, ast.Attribute):
+            name = target.attr
+        elif isinstance(target, ast.Name):
+            name = target.id
+        else:
+            unresolved += 1          # lambda, partial, call, subscript...
+            continue
+        bag.setdefault(name, []).append(node.lineno)
+    return ticking, shot, unresolved
+
+
+def sweep(src):
+    """(repeating, oneshot, n_repeating, n_oneshot, unresolved).
+
+    repeating/oneshot are [(name, line, span, [why], rearms, [lines], ndefs)],
     only for callbacks that contain at least one costly construct.
     """
     lines = src.splitlines()
+    tree = ast.parse(src)
     funcs = {}
-    for n in ast.walk(ast.parse(src)):
+    for n in ast.walk(tree):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
             funcs.setdefault(n.name, []).append((n.lineno, n.end_lineno or n.lineno))
 
-    ticking, shot = {}, {}
-    for i, line in enumerate(lines, 1):
-        m = re.search(r"timeout\.connect\(\s*(?:self\.)?([A-Za-z_][\w]*)", line)
-        if m:
-            ticking.setdefault(m.group(1), []).append((i, line.strip()))
-        m = re.search(r"QTimer\.singleShot\(([^,]+),\s*(?:self\.)?([A-Za-z_][\w]*)\s*\)",
-                      line)
-        if m:
-            shot.setdefault(m.group(2), []).append((i, line.strip()))
+    ticking, shot, unresolved = _arming_sites(tree)
 
     def scan(name):
-        for lo, hi in funcs.get(name, []):
-            body = "\n".join(lines[lo - 1:hi])
-            return (lo, hi - lo,
-                    sorted({why for tok, why in COSTLY.items() if tok in body}),
-                    "singleShot" in body)
-        return None
+        """Costly constructs over EVERY def of this name, not just the first.
 
-    # A name that does not resolve to a def in this file is NOT a callback:
-    # `timeout.connect(lambda: self.foo())` matches the regex and yields the
-    # literal "lambda". Counting those inflated the headline -- browser.py
-    # reported 42 repeating callbacks, one of which was "lambda" standing in
-    # for six lambda-armed sites. They are now counted as UNRESOLVED arming
-    # sites, which is the tool's reach expressed as a number instead of a
-    # paragraph: a count that moves when someone widens the regex.
-    unresolved = 0
+        This used to `return` inside the loop. browser-mac found what that
+        costs: mac and this tree both define `forget` twice -- once harmless,
+        once holding a `.clear()` -- and ast.walk reaches the harmless one
+        first, so the armed body was never read and the name came back CLEAN.
+        A false negative, and the bad kind: a verdict on a body it really did
+        read, just not the one that fires. Union now, with the def count
+        carried out so a duplicate is visible in the output rather than
+        silently resolved.
+        """
+        spans = funcs.get(name, [])
+        if not spans:
+            return None
+        found, lo_first, span_first = set(), spans[0][0], 0
+        for lo, hi in spans:
+            body = "\n".join(lines[lo - 1:hi])
+            found |= {why for tok, why in COSTLY.items() if tok in body}
+            if "singleShot" in body:
+                found.add("@rearms")
+            if hi - lo > span_first:
+                span_first = hi - lo
+        rearms = "@rearms" in found
+        found.discard("@rearms")
+        return lo_first, span_first, sorted(found), rearms, len(spans)
+
     repeating, oneshot, named = [], [], 0
     for name, sites in sorted(ticking.items()):
         got = scan(name)
@@ -124,17 +165,18 @@ def sweep(src):
             continue
         named += 1
         if got[2]:
-            repeating.append((name,) + got + (sites,))
+            repeating.append((name, got[0], got[1], got[2], got[3], sites, got[4]))
+    n_shot = 0
     for name, sites in sorted(shot.items()):
         got = scan(name)
         if got is None:
             unresolved += len(sites)
             continue
+        n_shot += 1
         if not got[2]:
             continue
-        # re-arms -> genuinely repeating; otherwise once per launch
-        (repeating if got[3] else oneshot).append((name,) + got + (sites,))
-    n_shot = sum(1 for n in shot if scan(n) is not None)
+        row = (name, got[0], got[1], got[2], got[3], sites, got[4])
+        (repeating if got[3] else oneshot).append(row)
     return repeating, oneshot, named, n_shot, unresolved
 
 
@@ -144,25 +186,28 @@ def report(src, label):
           % n_tick)
     print("%d one-shot singleShot targets, NOT the shape -- listed separately"
           % n_shot)
-    print("%d arming sites UNRESOLVED -- lambda / closure / attribute targets "
-          "this tool cannot name\n" % unresolved)
-    print("REPEATING, with a costly construct -- these are the candidates:")
-    for name, lo, span, found, rearms, sites in sorted(repeating,
-                                                       key=lambda h: -len(h[3])):
-        print("  %-26s %s:%-6d %3d lines  %s%s"
-              % (name, label, lo, span, ", ".join(found),
-                 "   [re-arms]" if rearms else ""))
-        for at, text in sites[:3]:
-            print("      armed at %s:%-6d %s" % (label, at, text[:78]))
-    print("\nONE-SHOT, with a costly construct -- once per launch, not the shape:")
-    for name, lo, span, found, rearms, sites in sorted(oneshot, key=lambda h: h[1]):
-        print("  %-26s %s:%-6d %s" % (name, label, lo, ", ".join(found)))
-        for at, text in sites[:2]:
-            print("      armed at %s:%-6d %s" % (label, at, text[:78]))
+    print("%d arming sites UNRESOLVED -- lambda / partial / expression targets\n"
+          % unresolved)
+
+    def rows(group, head):
+        print(head)
+        for name, lo, span, found, rearms, sites, ndefs in sorted(
+                group, key=lambda h: -len(h[3])):
+            dup = ("   [%d DEFS of this name -- verify which one is armed]"
+                   % ndefs) if ndefs > 1 else ""
+            print("  %-26s %s:%-6d %3d lines  %s%s%s"
+                  % (name, label, lo, span, ", ".join(found),
+                     "   [re-arms]" if rearms else "", dup))
+            print("      armed at %s" % ", ".join("%s:%d" % (label, a)
+                                                  for a in sites[:4]))
+
+    rows(repeating, "REPEATING, with a costly construct -- the candidates:")
+    rows(oneshot, "\nONE-SHOT, with a costly construct -- once per launch, not the shape:")
     print("\n%d of %d REPEATING callbacks contain a costly construct"
           % (len(repeating), n_tick))
-    print("REACH: lambda / functools.partial / relayed signals / local closures "
-          "are invisible here.\n       Any count above is a LOWER BOUND.")
+    print("REACH: a name defined more than once is unioned over every def and\n"
+          "       flagged; lambda/partial targets are counted as unresolved,\n"
+          "       not named. Counts are still a lower bound.")
 
 
 CASE = '''
@@ -226,7 +271,42 @@ class T:
     check('no callback is ever named "lambda"',
           not any(n == "lambda" for n, *_ in brep + bshot))
 
-    # 5. a one-shot target that re-arms itself IS repeating
+    # 5. browser-mac's pinning test: two defs of one name, only the SECOND
+    #    costly. scan() used to return on the first and call it clean -- a
+    #    verdict on a body it read, just not the one that fires. This is the
+    #    test that would have caught it; "no callback is named lambda" would
+    #    not have.
+    two = '''
+class T:
+    def __init__(self):
+        t = QTimer(self)
+        t.timeout.connect(self.forget)
+    def helper(self):
+        def forget():
+            self.cache.clear()
+        QTimer.singleShot(500, forget)
+    def forget(self):
+        return 1
+'''
+    trep, tshot, _, _, _ = sweep(two)
+    check("two defs of one name: the COSTLY one is still found",
+          any(n == "forget" and w for n, _, _, w, *_ in trep + tshot))
+    check("a duplicated name carries its def count out",
+          any(n == "forget" and r[-1] > 1 for n, *r in
+              [(x[0],) + tuple(x[1:]) for x in trep + tshot]))
+
+    # 6. an ANONYMOUS singleShot must reach the unresolved counter, not vanish.
+    #    The old regex required a bare name before the paren, so 43 sites in
+    #    browser.py were dropped before they could be counted.
+    anon = '''
+class T:
+    def __init__(self):
+        QTimer.singleShot(500, lambda: self.cache.clear())
+'''
+    _, _, _, _, unres2 = sweep(anon)
+    check("an anonymous singleShot is COUNTED as unresolved", unres2 >= 1)
+
+    # 7. a one-shot target that re-arms itself IS repeating
     rearm = CASE.replace("    def once(self):\n"
                          "        self.x = QLocale().toString(QTime.currentTime())",
                          "    def once(self):\n"
