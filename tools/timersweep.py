@@ -13,6 +13,25 @@ REPEATING means a timeout.connect target, or a singleShot target whose
 own body re-arms. A plain QTimer.singleShot(ms, self.foo) fires ONCE and
 is not the shape -- those are counted and printed separately.
 
+THE UNIT, because browser-mac and this tool count different things and
+both are defensible. This counts distinct callback NAMES reached by
+timeout.connect, and does NOT exclude a timer someone marked
+setSingleShot(True) -- it cannot, because the mark is on the timer
+object and resolving which object needs per-function scope resolution.
+mac's sweep counts CALL SITES with scope resolution and excludes the
+explicit single-shots: on mac that is 18 of 55 sites. So a count here is
+"callback names on a timeout signal" and a count there is "repeating
+call sites". Neither is wrong and they are not comparable. If a
+repeating-count is ever put in a report next to another edition's, the
+DEFINITION has to travel with the number.
+
+This edition has 17 setSingleShot(True) sites, so its 42 is an
+over-count of genuinely repeating callbacks by up to that many. It does
+not touch the four hits: all four were checked by hand and none of
+their timers is marked single-shot -- _show_time is setInterval(20000)
+with no mark, _caption_tick and _lapse_tick both .start(ms) with no
+mark, _drop_private_profile re-arms explicitly.
+
 REACH, so a clean result is not over-read. This finds callbacks named
 directly: `timeout.connect(self.foo)` or `QTimer.singleShot(ms,
 self.foo)`. It is BLIND to a timer armed through a lambda, a

@@ -615,6 +615,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-S03 | **A suite's verdict depends on whether the developer has pushed.** `_check_updates` (`browser.py:22464`) is on an ungated 3 s `singleShot` and runs `git fetch`, then `_count_behind` runs `git merge-base --is-ancestor HEAD @{u}`: exit 1 sets `_stranded` and raises a toast. HEAD stops being an ancestor the moment there are unpushed commits, so `check("no toast is up at all", ...)` fails. Proved A/B: in sync 110+132 checks 0 failed, one `--allow-empty` commit 2 and 1 failed. **CI checks out the pushed ref, so CI is always green and the dev box is the only place it fails** | Medium | **OPEN — upstream, shared `browser.py`** |
 | W-B22 | The own-requests log promises to write down the update check — `OwnRequests`' docstring calls it "a complete answer", `settings.html:2972` names it to the user — and `createRequest` is the only writer. The update check bypasses it: the only two `urllib.request.urlopen` calls in the file (`869`, `881`) are both in it, plus a `QProcess git fetch`. Separately, *Auto updates* **off** does not stop the startup fetch: `_check_updates` never reads `autoUpdate`. Source-verified, not executed | Medium | **OPEN — upstream; the no-`.git` path is Windows' shipping case** |
 | W-B23 | `TaskBar._show_time` (`browser.py:20930`) is the native twin of the `start.html` clock bug. A 20-second repeating `QTimer` constructs a **fresh `QLocale()` every tick**, formats `QTime.currentTime()` to `ShortFormat` — which is `HH:MM` and changes once a **minute** — then calls `setText`, `adjustSize()` and a full `_relayout()` unconditionally. **Two of every three ticks set a string identical to the one on screen** and relayout the bar for it. Timer lifecycle is correct (`showEvent`/`hideEvent`), so it only runs while the taskbar look is on. **Rate NOT measured — do not quote one** | Low | **OPEN — upstream** |
+| W-S05 | `win_port.json` names `linux_repo: ~/browser`, the pre-rewrite clone whose local `main` shares **no** history with the live repo (`merge-base` is empty). Same mis-pointing browser-mac found in `mac_port.json`. **But the base is sound here**: `UPSTREAM` is `origin/main`, a porter reads a ref not a working tree, and `ported_from 055eb676c` **is** an ancestor of that clone's `origin/main` — where mac's `28a6995` is not. Correct output by a fragile route; one stale fetch there and a port silently reads an older upstream | Low | **OPEN — parked on the fleet repoint** |
 | W-B21 | While `start.html` (the page the browser opens on) is the visible tab, one QtWebEngine child process (**the renderer** — this report first called it the compositor off a thread name; see the section) grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
@@ -1471,6 +1472,58 @@ it is linux's to land in the shared page.
 
 `start.html` is a shared page under `browser-pages`, so the fix is not this
 edition's to make.
+
+---
+
+## W-S05 — the porter's path points at the dead tree; its base does not
+
+browser-mac found `mac_port.json` naming `~/browser` with
+`ported_from 28a6995`, and asked whether this edition points somewhere similar.
+It does, half. Both halves measured, read-only, in one sitting:
+
+    win_port.json  linux_repo    ~/browser                 <- the dead tree
+    win_port.json  ported_from   055eb676c
+    win_port.py:66 UPSTREAM      "origin/main"
+
+    ~/browser  local main vs origin/main    8 ahead, 98 behind
+    ~/browser  merge-base main origin/main  (empty -- NO shared history)
+    ~/browser  055eb676c ancestor of origin/main?   YES
+    ~/browser  28a6995   ancestor of origin/main?   NO
+
+**So the path is mis-pointed and the base is not.** `~/browser` is a
+pre-rewrite clone whose *local* `main` shares no commit with the live history
+— `merge-base` returns nothing at all. But a porter reads a **ref**, not a
+working tree, and since `UPSTREAM` became `"origin/main"` this morning it reads
+that clone's remote-tracking ref, which *is* the live history. `055eb676c` is
+an ancestor of it; mac's `28a6995` is not.
+
+**Two different faults wearing one name**, and only one of them corrupts ports:
+
+    mis-pointed path + off-lineage base   mac   -> merges against unrelated history
+    mis-pointed path + on-lineage base    here  -> correct output, fragile route
+
+That is why mac's port deleted 41 of 44 darwin references this morning and this
+edition's refused twice instead. Not better guards alone — a valid base to
+reason from.
+
+**One thing to correct in how this was relayed.** `win_port.py:647`'s comment
+about `~/browser` "whose main shares no history with its own", and
+`tests/test_portbase.py:22`'s "the second case against `~/browser`", were read
+as the porter half-knowing about an unfixed bug. They are the opposite: they
+are this morning's record of **why the default was changed** from `main` to
+`origin/main`. The test exists because the local-`main` base was the defect
+that produced `adopted_pending`, and it is the guard against regressing to it.
+
+**Still worth repointing, for a smaller reason.** Correct-but-fragile: the
+route depends on a clone nobody maintains keeping its `origin` fetched, and
+`RULES.md` says `~/browser` is nobody's — 87 files dirty, and this edition must
+not touch it. One stale fetch there and the port silently reads an older
+upstream. **Not changed here:** the fleet repoint is parked on the owner's ruling, and
+a port-config rewrite is exactly what that ruling governs.
+
+Everything above was established with `git -C ~/browser rev-parse / log /
+rev-list / merge-base` — reads only. No fetch, no checkout, nothing written,
+nothing staged.
 
 ---
 
