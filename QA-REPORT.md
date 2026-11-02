@@ -1445,7 +1445,19 @@ rig with 4.5× the DOM diluting it.
 **That number is a hypothesis and it is labelled one.** Two points, measured on
 two different machines, with a linear form assumed and nothing to justify the
 form — and the 5-element point is a floor that has not yet been split into
-`[heap]` and `[anon:v8]`, so part of it may not be leak B at all. This is
+`[heap]` and `[anon:v8]`, so part of it may not be leak B at all.
+
+**Worse than that, and found by reading my own fixture rather than by anyone
+pushing back:** `minimal-static.html` contains **no `<script>` at all**. So
+the fit's two ends differ on *two* axes, not one — 5 versus 158 elements
+**and** zero JavaScript versus 112 KB of it. A floor measured on a page with
+almost no V8 heap may be low for that reason and not because its DOM is small,
+in which case the whole `0.49 + 0.0016 × elements` line is one variable read
+off two. The arm set gained a **fourth arm** for exactly this: `minimal-clock`
+with the same 1-second suppression as arm B — 5 elements, JS present, zero
+writes — so the DOM term can be taken with JavaScript running on both sides.
+`minimal-static` stays in, but only as the no-V8-at-all reference it actually
+is, not as the anchor. This is
 exactly the shape of the "~250 MB an hour" extrapolation withdrawn earlier in
 this section: a clean fit across too few points. It is written down so linux's
 real-page A/B can kill it, not so it can be quoted.
