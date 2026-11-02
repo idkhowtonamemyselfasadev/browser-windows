@@ -694,7 +694,7 @@ from PyQt6.QtCore import (
     QMarginsF, QMimeData, QRect, QSizeF,
     QBuffer, QElapsedTimer, QEvent, QEventLoop, QFile, QIODevice, QLocale,
     QObject, QPoint, QProcess, QProcessEnvironment, QRect, QSize,
-    QStringListModel, QTime,
+    QModelIndex, QStringListModel, QTime,
     QDateTime, QFileSystemWatcher, QTimer, QUrl, QUrlQuery, Qt,
     pyqtProperty, pyqtSignal, pyqtSlot,
 )
@@ -990,6 +990,156 @@ SEARCH_ENGINES = {
     "startpage": ("Startpage", "https://www.startpage.com/sp/search?query={}"),
 }
 SUGGEST_URL = "https://suggestqueries.google.com/complete/search"
+# A search engine's own results page is a record of something he
+# searched for, not a page in its own right. Those addresses sit in the
+# history like any other, so every suggestion row built out of the
+# history was handing him back his own searches -- which is the thing
+# he asked to stop seeing ("i dont wanna see what i have searched, i
+# know what i search"). Wave 26 dropped the separate list and the rows
+# an empty bar showed; this is the half that was left.
+#
+# Matched by engine name among the host's labels, so google.de and
+# news.google.com count, and by a results path, so google.com/maps?q=
+# and a bookmarked mail link do not.
+# Two arms, because either alone is wrong.
+#
+# The first is the engine table itself: every engine the browser can be
+# set to, read off its own template so a seventh engine added to
+# SEARCH_ENGINES is covered without anyone remembering this function.
+# That arm is what catches DuckDuckGo, whose results live at
+# `duckduckgo.com/?q=` with no /search in it, and Startpage, whose
+# parameter is `query` and not `q`. A rule written as "/search?q=" --
+# which is the obvious one -- misses both of them, and misses them
+# quietly: Google and Bing look fixed.
+#
+# The second is the engine's NAME among the host's labels, for the ones
+# not in the table: google.de, news.google.com, yandex, baidu, yahoo.
+SEARCH_ENGINE_HOST_WORDS = frozenset({
+    "google", "duckduckgo", "bing", "brave", "ecosia", "startpage",
+    "yahoo", "yandex", "qwant", "mojeek", "searx", "searxng", "baidu",
+    "perplexity",
+})
+# "/html" and "/lite" are DuckDuckGo's no-JavaScript results pages,
+# which is what a text browser or a strict blocker lands on.
+SEARCH_RESULT_PATHS = ("", "/search", "/sp/search", "/results",
+                       "/web", "/s", "/suche", "/html", "/lite")
+SEARCH_QUERY_KEYS = ("q", "query", "p", "text", "wd", "eingabe")
+# a value no engine's own template carries, so the parameter found is
+# the one the query goes in and not some other parameter that happens
+# to read the same
+_SEARCH_SENTINEL = "qqsentinelqq"
+
+
+def _bare_host(url):
+    host = (url.host() or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _query_out(query, name):
+    """A query parameter as he typed it.
+
+    The order matters and was wrong here for as long as the function
+    existed. A query string writes a space as `+` and a real plus as
+    `%2B`, so the `+`s have to go BEFORE the percent-decoding -- read
+    fully decoded first and `%2B` has already become a `+` that the
+    next line turns into a space. Measured on the shipped code:
+
+        searched for   c++      bar showed  "c  "
+        searched for   a+b      bar showed  "a b"
+
+    and pressing Enter on that searched for the spaces."""
+    pretty = query.queryItemValue(name)
+    if not pretty:
+        return ""
+    return QUrl.fromPercentEncoding(pretty.replace("+", " ").encode())
+
+
+def _engine_result_urls(extra=()):
+    """Every engine URL with the sentinel standing where the query
+    goes: the built-in table, then his own engines from
+    Browser.own_engines, which write their slot as `%s` or
+    `{searchTerms}` rather than `{}`.
+
+    His own engines are in here because the default engine is not the
+    only thing a typed line can reach -- _resolve_typed asks
+    engine_url(engine_for_text(...)) first, which can land on one of
+    his. Without them the filter would work for six engines and
+    quietly not for his. The keyword table (`gh`, `so`, `yt`) is a
+    DIFFERENT config key, searchKeywords, and deliberately not here: a
+    search on a site is a page he went to."""
+    out = [pattern.format(_SEARCH_SENTINEL)
+           for _name, pattern in SEARCH_ENGINES.values()]
+    for raw in extra or ():
+        filled = str(raw or "").replace("{searchTerms}", _SEARCH_SENTINEL) \
+                               .replace("%s", _SEARCH_SENTINEL)
+        if _SEARCH_SENTINEL in filled:
+            out.append(filled)
+    return out
+
+
+def search_query_of(url, extra=()):
+    """What was searched for, if this address is an engine showing
+    results -- and "" if it is somewhere he went.
+
+    One walk of SEARCH_ENGINES, because there were nearly two. The
+    address bar has read the query out of a results page since the
+    beginning (bar_text_for: it shows "i like pancakes", not a hundred
+    characters of google.com/search), and the drop-down needed the
+    same question answered to stop offering him his own searches. Two
+    implementations of one thing with only one of them live is this
+    codebase's recurring bug -- see _migrate_tabclick_config, where
+    the dropdowns wrote `mouse.tabDouble` and the live strip read
+    something else -- so the second one is this function instead.
+
+    The path gate applies to both arms and is what keeps the engines'
+    other pages: `google.com/maps?q=berlin` is a map, not a search for
+    Berlin, and the shipped bar showed "berlin" for it. Because the
+    whole test is host-based, a search ON a site is untouched --
+    `github.com/search?q=`, `stackoverflow.com/search?q=`, every
+    keyword search -- those hosts are not engines.
+    """
+    url = as_qurl(url)
+    host = _bare_host(url)
+    if not host:
+        return ""
+    path = (url.path() or "").rstrip("/")
+    query = QUrlQuery(url.query())
+    # arm one: an engine we know the template of, matched against its
+    # OWN template -- host, path, and the parameter the query goes in.
+    # The path has to come from the template and not from a list of
+    # likely paths, which is what the first version of this did: a
+    # list says `/search` and `/` and then an engine whose results
+    # live at `/find` is missed, while `google.com/maps?q=berlin`
+    # matches a list entry it has no business matching.
+    for filled in _engine_result_urls(extra):
+        template = QUrl(filled)
+        if _bare_host(template) != host:
+            continue
+        if (template.path() or "").rstrip("/") != path:
+            continue
+        for name, value in QUrlQuery(template.query()).queryItems():
+            if value != _SEARCH_SENTINEL:
+                continue
+            got = _query_out(query, name)
+            if got:
+                return got
+    # arm two: an engine by name, for the ones not in the table. Here
+    # the path list is the only thing standing between a results page
+    # and his mail, so it stays.
+    if not (path in SEARCH_RESULT_PATHS or path.startswith("/search")):
+        return ""
+    if not set(host.split(".")) & SEARCH_ENGINE_HOST_WORDS:
+        return ""
+    for name in SEARCH_QUERY_KEYS:
+        got = _query_out(query, name)
+        if got:
+            return got
+    return ""
+
+
+def is_search_result(url, extra=()):
+    """Whether this address is a record of what he searched for."""
+    return bool(search_query_of(url, extra))
 DOWNLOAD_DIR = Path.home() / "Downloads"
 
 
@@ -2380,7 +2530,7 @@ PAGE_TOOLS = {
   if (s) { s.remove(); return "off"; }
   s = document.createElement("style");
   s.id = "__visited";
-  s.textContent = "a:visited, a:visited * { color: #b48ead !important; }";
+  s.textContent = "a:visited, a:visited * { color: #a6adc8 !important; }";
   document.documentElement.appendChild(s);
   return "on";
 })()""",
@@ -3339,6 +3489,120 @@ GOOGLE_LIGHT_JS = r"""
   unpic();
   window.addEventListener("load", unpic);
   setTimeout(unpic, 1500);
+})();
+"""
+
+
+# YouTube ships its video ads inside its own player data and, when it
+# sees an ad blocker, blocks the player after one video. Blocking the
+# ad at the network is exactly what it detects, so instead this removes
+# the ad data from the response in the page -- no ad plays, nothing is
+# "blocked", and the wall has nothing to react to. MainWorld at
+# DocumentCreation so the hooks are in before any YouTube script runs.
+YOUTUBE_JS = r"""
+(function () {
+  var h = location.hostname;
+  if (!(h === "youtube.com" || h.endsWith(".youtube.com")
+        || h.endsWith("youtube-nocookie.com"))) return;
+
+  // Some QtWebEngine builds report AV1 support but cannot actually decode it,
+  // so YouTube serves AV1 and the player stays a black rectangle. Tell YouTube
+  // we cannot do AV1 (and the older VP8) so it falls back to VP9, which this
+  // engine really does decode. Scoped to YouTube; other sites are untouched.
+  try {
+    var _ist = MediaSource.isTypeSupported.bind(MediaSource);
+    MediaSource.isTypeSupported = function (t) {
+      if (t && /av01|av1|vp8[^0-9]/i.test(t)) return false;
+      return _ist(t);
+    };
+  } catch (e) {}
+  try {
+    var _cpt = HTMLMediaElement.prototype.canPlayType;
+    HTMLMediaElement.prototype.canPlayType = function (t) {
+      if (t && /av01|av1/i.test(t)) return "";
+      return _cpt.call(this, t);
+    };
+  } catch (e) {}
+
+  // Only the ad data YouTube ships inside its own player data. Removing it in
+  // the page means no ad plays and nothing is blocked at the network, so the
+  // "turn off your ad blocker" wall has nothing to react to. The data is
+  // scrubbed IN PLACE -- never re-serialised into a new Response, which would
+  // leave the old content-length behind and corrupt the stream (black player).
+  var AD = ["adPlacements", "playerAds", "adSlots", "adBreakHeartbeatParams"];
+
+  function playerish(o) {
+    return o && typeof o === "object" && !Array.isArray(o)
+      && ("streamingData" in o || "playabilityStatus" in o
+          || "adPlacements" in o || "playerAds" in o || "playerResponse" in o);
+  }
+
+  function scrub(o, depth) {
+    if (!o || typeof o !== "object" || depth > 8) return o;
+    try {
+      if (Array.isArray(o)) {
+        for (var i = 0; i < o.length; i++)
+          if (o[i] && typeof o[i] === "object") scrub(o[i], depth + 1);
+        return o;
+      }
+      for (var a = 0; a < AD.length; a++) if (AD[a] in o) delete o[AD[a]];
+      for (var k in o) {
+        if (!Object.prototype.hasOwnProperty.call(o, k)) continue;
+        var v = o[k];
+        if (v && typeof v === "object") scrub(v, depth + 1);
+      }
+    } catch (e) {}
+    return o;
+  }
+
+  // 1. the inline bootstrap copy, and anything parsed through JSON.parse
+  var _parse = JSON.parse;
+  JSON.parse = function () {
+    var r = _parse.apply(this, arguments);
+    try { if (playerish(r)) scrub(r, 0); } catch (e) {}
+    return r;
+  };
+
+  // 2. fetch().json() -- the new player path. Scrub the parsed object in
+  //    place; the Response itself is never touched, so the stream is intact.
+  var _json = Response.prototype.json;
+  Response.prototype.json = function () {
+    return _json.apply(this, arguments).then(function (d) {
+      try { if (playerish(d)) scrub(d, 0); } catch (e) {}
+      return d;
+    });
+  };
+
+  // 3. window.ytInitialPlayerResponse, read on the first page load
+  var _ipr;
+  try {
+    Object.defineProperty(window, "ytInitialPlayerResponse", {
+      configurable: true,
+      get: function () { return _ipr; },
+      set: function (v) { try { scrub(v, 0); } catch (e) {} _ipr = v; }
+    });
+  } catch (e) {}
+
+  // 4. if a wall still slips onto the screen, take it off and keep playing
+  function unwall() {
+    try {
+      var sel = "ytd-enforcement-message-view-model,"
+              + "ytd-popup-container tp-yt-paper-dialog";
+      if (!document.querySelector(sel)) return;
+      document.querySelectorAll(sel).forEach(function (el) {
+        (el.closest("tp-yt-paper-dialog") || el).remove();
+      });
+      document.querySelectorAll("tp-yt-iron-overlay-backdrop")
+        .forEach(function (b) { b.remove(); });
+      var v = document.querySelector("video");
+      if (v && v.paused) { try { v.play(); } catch (e) {} }
+    } catch (e) {}
+  }
+  var mo = new MutationObserver(unwall);
+  (function arm() {
+    if (document.body) mo.observe(document.body, { childList: true, subtree: true });
+    else setTimeout(arm, 200);
+  })();
 })();
 """
 
@@ -4301,8 +4565,10 @@ UI_STRINGS = {
 "clearHistory":"Clear history","clearCookies":"Clear cookies",
 "cookiesHint":"Clear cookies logs this virtual browser out everywhere.",
 "updates":"Updates","checkUpdates":"Check for updates","setupT":"Setup",
+"autoUpdates":"Auto updates",
+"autoUpdatesHint":"Keep the browser and its web engine up to date on their own. New versions are fetched and applied in the background — the browser is never restarted for you, the update loads the next time you open it. On by default.",
 "libUpdates":"Keep the libraries up to date",
-"libUpdatesHint":"How often to look for a newer web engine (PyQt6 and QtWebEngine). Nothing is ever installed without asking.",
+"libUpdatesHint":"How often to look for a newer web engine (PyQt6 and QtWebEngine). With auto updates off, it only offers — nothing is installed without asking.",
 "libAvailable":"Library updates are available","libUpdateBtn":"Update",
 "libUpdating":"Updating libraries\u2026",
 "libUpdated":"Libraries updated \u2014 restart to load them",
@@ -4328,7 +4594,7 @@ UI_STRINGS = {
 "catFind":"Finding things","catTabs":"Tabs and windows","catLooks":"Looks","catRead":"Reading and media","catMake":"Notes, capture and downloads","catPlay":"Games and streaming","catKeys":"Keys and the mouse","catGeneral":"General","catPrivacy":"Privacy","catAdvanced":"Advanced",
 "catSystem":"Browser","off":"Off",
 "addProxy":"Add proxy profile","proxyName":"Name",
-"wizBrand":"Setup","wizStepOf":"Step {a} of {b}","wizNavWelcome":"Welcome","wizNavSearch":"Search","wizNavLook":"Start page","wizNavWeb":"Websites","wizNavPrivacy":"Privacy","wizNavLinks":"Quick links","wizNavDone":"Finish","wizWelcomeT":"Welcome","wizWelcomeP":"Let's set your browser up. Nine quick steps \u2014 and you can change every one of them later under Settings.","wizLangLabel":"Language","wizLangHint":"Changes the browser's own pages, the language websites are asked for, and the translate button.","wizSearchT":"Choose your search engine","wizSearchP":"The start page and the address bar send your searches here.","wizLookT":"Make the start page yours","wizLookP":"Whether the browser opens on it, what it looks like, and where the search bar sits.","wizPosLabel":"Search bar position","wizPosHint":"Drag the bar in the preview \u2014 the real start page follows.","wizOwnImage":"Use your own image\u2026","wizWebT":"How websites look","wizWebP":"These apply to every site you visit.","wizDarkHint":"Bright pages get darkened so they don't blind you at night.","wizZoomHint":"Makes everything on a website bigger or smaller.","wizPrivP":"None of this leaves your computer. Choose what the browser remembers.","wizHistHint":"Pages you visit are listed on the history page.","wizPwOffer":"Offer to save passwords","wizPwHint":"When you log in somewhere, the browser asks whether it should remember it.","wizTabsHint":"Start again where you left off.","wizDlHint":"Off = everything lands in your Downloads folder.","wizLinksT":"Quick links","wizLinksP":"Shortcuts under the search bar on every new tab.","wizLinksYours":"On your start page","wizLinksSug":"Suggestions","wizNamePh":"Name","wizDoneT":"You're all set","wizDoneP":"Here is what you picked. Anything can be changed later under Settings \u2014 Setup.","wizSumBar":"Search bar","wizNone":"None","wizCentered":"Centered","wizCustom":"Where you put it","wizYourImage":"Your image","wizOn":"On","wizOff":"Off","wizBack":"\u2190 Back","wizSkip":"Skip to the summary","wizLeaveT":"Leave setup?","wizLeaveP":"Everything you already picked is kept; only a quick link typed but not added is dropped. Setup opens again on your next new tab, or from Settings.","wizLeaveBtn":"Leave","wizStay":"Keep setting up","wizRailFoot":"Settings \u2014 Setup re-runs this any time.","wizNature":"Nature","wizNavTheme":"Colours","wizThemeT":"Pick your colours","wizThemeP":"A theme paints the browser and its own pages. Websites keep the colours their makers gave them.","wizThemeMore":"Twelve of a hundred and fourteen \u2014 the rest are under Settings \u2014 Theme, with a search box.",
+"wizBrand":"Setup","wizStepOf":"Step {a} of {b}","wizNavWelcome":"Welcome","wizNavSearch":"Search","wizNavLook":"Start page","wizNavWeb":"Websites","wizNavPrivacy":"Privacy","wizNavLinks":"Quick links","wizNavDone":"Finish","wizWelcomeT":"Welcome","wizWelcomeP":"Let's set your browser up. A few quick steps \u2014 and you can change every one of them later under Settings.","wizLangLabel":"Language","wizLangHint":"Changes the browser's own pages, the language websites are asked for, and the translate button.","wizSearchT":"Choose your search engine","wizSearchP":"The start page and the address bar send your searches here.","wizLookT":"Make the start page yours","wizLookP":"Whether the browser opens on it, what it looks like, and where the search bar sits.","wizPosLabel":"Search bar position","wizPosHint":"Drag the bar in the preview \u2014 the real start page follows.","wizOwnImage":"Use your own image\u2026","wizWebT":"How websites look","wizWebP":"These apply to every site you visit.","wizDarkHint":"Bright pages get darkened so they don't blind you at night.","wizZoomHint":"Makes everything on a website bigger or smaller.","wizPrivP":"None of this leaves your computer. Choose what the browser remembers.","wizHistHint":"Pages you visit are listed on the history page.","wizPwOffer":"Offer to save passwords","wizPwHint":"When you log in somewhere, the browser asks whether it should remember it.","wizTabsHint":"Start again where you left off.","wizDlHint":"Off = everything lands in your Downloads folder.","wizLinksT":"Quick links","wizLinksP":"Shortcuts under the search bar on every new tab.","wizLinksYours":"On your start page","wizLinksSug":"Suggestions","wizNamePh":"Name","wizDoneT":"You're all set","wizDoneP":"Here is what you picked. Anything can be changed later under Settings \u2014 Setup.","wizSumBar":"Search bar","wizNone":"None","wizCentered":"Centered","wizCustom":"Where you put it","wizYourImage":"Your image","wizOn":"On","wizOff":"Off","wizBack":"\u2190 Back","wizSkip":"Skip to the summary","wizLeaveT":"Leave setup?","wizLeaveP":"Everything you already picked is kept; only a quick link typed but not added is dropped. Setup opens again on your next new tab, or from Settings.","wizLeaveBtn":"Leave","wizStay":"Keep setting up","wizRailFoot":"Settings \u2014 Setup re-runs this any time.","wizNavTabs":"Tabs","wizTabsT":"Tabs & windows","wizTabsP":"How tabs open, close, and come back.","wizNavBar":"Address bar","wizBarT":"The address bar","wizBarP":"What it suggests, and where it sits.","wizNavMedia":"Video & sound","wizMediaT":"Video and sound","wizMediaP":"How pages are allowed to play, and what the media keys do.","wizNavDownloads":"Downloads","wizDlT":"Downloads","wizDlP":"Where files land, and what happens to them.","wizNavTools":"Tools","wizToolsT":"Tools & panels","wizToolsP":"The extras the browser keeps beside the page.","wizNature":"Nature","wizNavTheme":"Colours","wizThemeT":"Pick your colours","wizThemeP":"A theme paints the browser and its own pages. Websites keep the colours their makers gave them.","wizThemeMore":"Twelve of a hundred and fourteen \u2014 the rest are under Settings \u2014 Theme, with a search box.",
 "findPh":"Find in page","findNext":"Next match","findPrev":"Previous match",
 "findCase":"Match case","findClose":"Close find bar",
 "savePdf":"Save as PDF","printTo":"Print\u2026",
@@ -4454,8 +4720,10 @@ UI_STRINGS = {
 "clearCookies":"Cookies l\u00f6schen",
 "cookiesHint":"Cookies l\u00f6schen meldet diesen virtuellen Browser \u00fcberall ab.",
 "updates":"Updates","checkUpdates":"Nach Updates suchen","setupT":"Einrichtung",
+"autoUpdates":"Automatische Updates",
+"autoUpdatesHint":"Hält den Browser und seine Web-Engine von selbst aktuell. Neue Versionen werden im Hintergrund geladen und angewendet — der Browser wird nie für dich neu gestartet, das Update lädt beim nächsten Öffnen. Standardmäßig an.",
 "libUpdates":"Bibliotheken aktuell halten",
-"libUpdatesHint":"Wie oft nach einer neueren Web-Engine (PyQt6 und QtWebEngine) gesucht wird. Installiert wird nie ohne Nachfrage.",
+"libUpdatesHint":"Wie oft nach einer neueren Web-Engine (PyQt6 und QtWebEngine) gesucht wird. Bei ausgeschalteten automatischen Updates wird nur angeboten — installiert wird nie ohne Nachfrage.",
 "libAvailable":"Updates f\u00fcr die Bibliotheken verf\u00fcgbar",
 "libUpdateBtn":"Aktualisieren",
 "libUpdating":"Bibliotheken werden aktualisiert\u2026",
@@ -4483,7 +4751,7 @@ UI_STRINGS = {
 "catFind":"Finden","catTabs":"Tabs und Fenster","catLooks":"Aussehen","catRead":"Lesen und Medien","catMake":"Notizen, Aufnahme und Downloads","catPlay":"Spiele und Streaming","catKeys":"Tasten und Maus","catGeneral":"Allgemein","catPrivacy":"Privatsph\u00e4re",
 "catAdvanced":"Erweitert","catSystem":"Browser","off":"Aus",
 "addProxy":"Proxy-Profil hinzuf\u00fcgen","proxyName":"Name",
-"wizBrand":"Einrichtung","wizStepOf":"Schritt {a} von {b}","wizNavWelcome":"Willkommen","wizNavSearch":"Suche","wizNavLook":"Startseite","wizNavWeb":"Webseiten","wizNavPrivacy":"Privatsph\u00e4re","wizNavLinks":"Schnelllinks","wizNavDone":"Fertig","wizWelcomeT":"Willkommen","wizWelcomeP":"Richten wir deinen Browser ein. Neun kurze Schritte \u2014 und alles davon l\u00e4sst sich sp\u00e4ter in den Einstellungen \u00e4ndern.","wizLangLabel":"Sprache","wizLangHint":"\u00c4ndert die Seiten des Browsers, die Sprache, die Webseiten bekommen, und den \u00dcbersetzen-Knopf.","wizSearchT":"W\u00e4hle deine Suchmaschine","wizSearchP":"Startseite und Adressleiste schicken deine Suchen dorthin.","wizLookT":"Mach die Startseite zu deiner","wizLookP":"Ob der Browser damit startet, wie sie aussieht und wo die Suchleiste sitzt.","wizPosLabel":"Position der Suchleiste","wizPosHint":"Zieh die Leiste in der Vorschau \u2014 die echte Startseite macht es nach.","wizOwnImage":"Eigenes Bild verwenden\u2026","wizWebT":"Wie Webseiten aussehen","wizWebP":"Das gilt f\u00fcr jede Seite, die du besuchst.","wizDarkHint":"Helle Seiten werden abgedunkelt, damit sie dich nachts nicht blenden.","wizZoomHint":"Macht alles auf einer Webseite gr\u00f6\u00dfer oder kleiner.","wizPrivP":"Nichts davon verl\u00e4sst deinen Computer. W\u00e4hle, woran sich der Browser erinnert.","wizHistHint":"Besuchte Seiten stehen auf der Verlaufsseite.","wizPwOffer":"Passw\u00f6rter zum Speichern anbieten","wizPwHint":"Wenn du dich irgendwo anmeldest, fragt der Browser, ob er es sich merken soll.","wizTabsHint":"Da weitermachen, wo du aufgeh\u00f6rt hast.","wizDlHint":"Aus = alles landet im Downloads-Ordner.","wizLinksT":"Schnelllinks","wizLinksP":"Verkn\u00fcpfungen unter der Suchleiste auf jedem neuen Tab.","wizLinksYours":"Auf deiner Startseite","wizLinksSug":"Vorschl\u00e4ge","wizNamePh":"Name","wizDoneT":"Alles bereit","wizDoneP":"Das hast du gew\u00e4hlt. Alles l\u00e4sst sich sp\u00e4ter unter Einstellungen \u2014 Einrichtung \u00e4ndern.","wizSumBar":"Suchleiste","wizNone":"Keins","wizCentered":"Mittig","wizCustom":"Wo du sie hingelegt hast","wizYourImage":"Dein Bild","wizOn":"An","wizOff":"Aus","wizBack":"\u2190 Zur\u00fcck","wizSkip":"Direkt zur \u00dcbersicht","wizLeaveT":"Einrichtung verlassen?","wizLeaveP":"Alles bereits Gew\u00e4hlte bleibt erhalten; nur ein Schnelllink, den du getippt, aber nicht hinzugef\u00fcgt hast, geht verloren. Die Einrichtung \u00f6ffnet sich beim n\u00e4chsten neuen Tab wieder oder \u00fcber die Einstellungen.","wizLeaveBtn":"Verlassen","wizStay":"Weiter einrichten","wizRailFoot":"Einstellungen \u2014 Einrichtung startet das jederzeit neu.","wizNature":"Natur","wizNavTheme":"Farben","wizThemeT":"W\u00e4hle deine Farben","wizThemeP":"Ein Design f\u00e4rbt den Browser und seine eigenen Seiten. Webseiten behalten die Farben, die ihre Macher ihnen gegeben haben.","wizThemeMore":"Zw\u00f6lf von hundertvierzehn \u2014 der Rest steht unter Einstellungen \u2014 Design, mit einem Suchfeld.",
+"wizBrand":"Einrichtung","wizStepOf":"Schritt {a} von {b}","wizNavWelcome":"Willkommen","wizNavSearch":"Suche","wizNavLook":"Startseite","wizNavWeb":"Webseiten","wizNavPrivacy":"Privatsph\u00e4re","wizNavLinks":"Schnelllinks","wizNavDone":"Fertig","wizWelcomeT":"Willkommen","wizWelcomeP":"Richten wir deinen Browser ein. Ein paar kurze Schritte \u2014 und alles davon l\u00e4sst sich sp\u00e4ter in den Einstellungen \u00e4ndern.","wizLangLabel":"Sprache","wizLangHint":"\u00c4ndert die Seiten des Browsers, die Sprache, die Webseiten bekommen, und den \u00dcbersetzen-Knopf.","wizSearchT":"W\u00e4hle deine Suchmaschine","wizSearchP":"Startseite und Adressleiste schicken deine Suchen dorthin.","wizLookT":"Mach die Startseite zu deiner","wizLookP":"Ob der Browser damit startet, wie sie aussieht und wo die Suchleiste sitzt.","wizPosLabel":"Position der Suchleiste","wizPosHint":"Zieh die Leiste in der Vorschau \u2014 die echte Startseite macht es nach.","wizOwnImage":"Eigenes Bild verwenden\u2026","wizWebT":"Wie Webseiten aussehen","wizWebP":"Das gilt f\u00fcr jede Seite, die du besuchst.","wizDarkHint":"Helle Seiten werden abgedunkelt, damit sie dich nachts nicht blenden.","wizZoomHint":"Macht alles auf einer Webseite gr\u00f6\u00dfer oder kleiner.","wizPrivP":"Nichts davon verl\u00e4sst deinen Computer. W\u00e4hle, woran sich der Browser erinnert.","wizHistHint":"Besuchte Seiten stehen auf der Verlaufsseite.","wizPwOffer":"Passw\u00f6rter zum Speichern anbieten","wizPwHint":"Wenn du dich irgendwo anmeldest, fragt der Browser, ob er es sich merken soll.","wizTabsHint":"Da weitermachen, wo du aufgeh\u00f6rt hast.","wizDlHint":"Aus = alles landet im Downloads-Ordner.","wizLinksT":"Schnelllinks","wizLinksP":"Verkn\u00fcpfungen unter der Suchleiste auf jedem neuen Tab.","wizLinksYours":"Auf deiner Startseite","wizLinksSug":"Vorschl\u00e4ge","wizNamePh":"Name","wizDoneT":"Alles bereit","wizDoneP":"Das hast du gew\u00e4hlt. Alles l\u00e4sst sich sp\u00e4ter unter Einstellungen \u2014 Einrichtung \u00e4ndern.","wizSumBar":"Suchleiste","wizNone":"Keins","wizCentered":"Mittig","wizCustom":"Wo du sie hingelegt hast","wizYourImage":"Dein Bild","wizOn":"An","wizOff":"Aus","wizBack":"\u2190 Zur\u00fcck","wizSkip":"Direkt zur \u00dcbersicht","wizLeaveT":"Einrichtung verlassen?","wizLeaveP":"Alles bereits Gew\u00e4hlte bleibt erhalten; nur ein Schnelllink, den du getippt, aber nicht hinzugef\u00fcgt hast, geht verloren. Die Einrichtung \u00f6ffnet sich beim n\u00e4chsten neuen Tab wieder oder \u00fcber die Einstellungen.","wizLeaveBtn":"Verlassen","wizStay":"Weiter einrichten","wizRailFoot":"Einstellungen \u2014 Einrichtung startet das jederzeit neu.","wizNavTabs":"Tabs","wizTabsT":"Tabs & Fenster","wizTabsP":"Wie Tabs sich \u00f6ffnen, schlie\u00dfen und zur\u00fcckkommen.","wizNavBar":"Adressleiste","wizBarT":"Die Adressleiste","wizBarP":"Was sie vorschl\u00e4gt und wo sie sitzt.","wizNavMedia":"Video & Ton","wizMediaT":"Video und Ton","wizMediaP":"Wie Seiten abspielen d\u00fcrfen und was die Medientasten tun.","wizNavDownloads":"Downloads","wizDlT":"Downloads","wizDlP":"Wo Dateien landen und was mit ihnen passiert.","wizNavTools":"Werkzeuge","wizToolsT":"Werkzeuge & Panels","wizToolsP":"Die Extras, die der Browser neben der Seite beh\u00e4lt.","wizNature":"Natur","wizNavTheme":"Farben","wizThemeT":"W\u00e4hle deine Farben","wizThemeP":"Ein Design f\u00e4rbt den Browser und seine eigenen Seiten. Webseiten behalten die Farben, die ihre Macher ihnen gegeben haben.","wizThemeMore":"Zw\u00f6lf von hundertvierzehn \u2014 der Rest steht unter Einstellungen \u2014 Design, mit einem Suchfeld.",
 "findPh":"Auf Seite suchen","findNext":"N\u00e4chster Treffer",
 "findPrev":"Vorheriger Treffer","findCase":"Gro\u00df-/Kleinschreibung",
 "findClose":"Suchleiste schlie\u00dfen",
@@ -9348,6 +9616,69 @@ QTabBar::tab { border-radius: 6px 6px 0 0; }
 }
 
 
+def _rgba(hexc, a):
+    """'#rrggbb' + alpha -> 'rgb(r g b / a)', for theme CSS built from a palette."""
+    h = (hexc or "#000000").lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except (ValueError, IndexError):
+        r = g = b = 0
+    return "rgb(%d %d %d / %s)" % (r, g, b, a)
+
+
+def _auto_personality(entry):
+    """A light, palette-derived personality for any theme that was not given a
+    hand-made one in _THEME_EXTRAS. Every theme gets its own character this way,
+    drawn from its OWN colours, so none stays a bare palette: a dark theme glows
+    in its accent with two faint corner tints, a light one speaks in serif over a
+    soft paper grain. Kept subtle (low alpha, a central scrim behind the column)
+    so it never hurts readability. Hand-made entries and `exact` ones take
+    precedence and never reach here."""
+    sel = ':root[data-theme="%s"]' % entry["key"]
+    bg, text, accent = entry["bg"], entry["text"], entry["accent"]
+    green = entry.get("green", accent)
+    peach = entry.get("peach", accent)
+    if entry.get("dark"):
+        css = """
+%(sel)s h1, %(sel)s h2, %(sel)s body:not(.hasbg) #clock {
+  text-shadow: 0 0 2px %(glow1)s, 0 0 16px %(glow2)s;
+  letter-spacing: .01em;
+}
+%(sel)s body:not(.hasbg) {
+  background-image:
+    radial-gradient(130%% 85%% at 50%% 44%%, rgb(0 0 0 / 0) 46%%, %(scrim)s 100%%),
+    radial-gradient(58%% 44%% at 50%% 40%%, %(bloom)s, rgb(0 0 0 / 0) 70%%),
+    radial-gradient(circle at 15%% 86%%, %(c1)s, rgb(0 0 0 / 0) 42%%),
+    radial-gradient(circle at 86%% 15%%, %(c2)s, rgb(0 0 0 / 0) 42%%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+""" % {"sel": sel, "glow1": _rgba(accent, ".5"), "glow2": _rgba(accent, ".32"),
+       "scrim": _rgba(bg, ".55"), "bloom": _rgba(accent, ".09"),
+       "c1": _rgba(green, ".07"), "c2": _rgba(peach, ".06")}
+        return {"css": css}
+    css = """
+%(sel)s h1, %(sel)s h2, %(sel)s .cname {
+  font-family: "Charter", "Bitstream Charter", "Georgia",
+               "Liberation Serif", "Times New Roman", serif !important;
+  letter-spacing: .01em;
+}
+%(sel)s body:not(.hasbg) {
+  background-image:
+    repeating-linear-gradient(%(grain)s 0 1px, rgb(0 0 0 / 0) 1px 4px),
+    radial-gradient(135%% 120%% at 50%% 42%%, rgb(0 0 0 / 0) 55%%, %(edge)s 100%%),
+    radial-gradient(60%% 50%% at 50%% 38%%, %(wash)s, rgb(0 0 0 / 0) 72%%);
+  background-repeat: repeat, no-repeat, no-repeat;
+  background-attachment: fixed;
+}
+""" % {"sel": sel, "grain": _rgba(text, ".028"),
+       "edge": _rgba(text, ".06"), "wash": _rgba(accent, ".06")}
+    return {"css": css}
+
+
+
 def _build_themes():
     themes = []
     for row in _CATALOGUE:
@@ -9359,6 +9690,11 @@ def _build_themes():
                  "peach": peach, "red": red}
         entry.update(_THEME_EXTRAS.get(key, {}))
         entry["dark"] = group != "light" and _luma(bg) < 0.5
+        if "css" not in entry and not entry.get("exact"):
+            auto = _auto_personality(entry)
+            entry["css"] = auto["css"]
+            if auto.get("qss"):
+                entry["qss"] = auto["qss"]
         themes.append(entry)
     return themes
 
@@ -13540,6 +13876,7 @@ class Bridge(QObject):
         self.browser = browser
         self._updating = None
         self._last_generated = ""
+        self._saved_changes = ""
 
     @pyqtSlot()
     def runUpdate(self):
@@ -13571,6 +13908,7 @@ class Bridge(QObject):
         if not (APP_DIR / ".git").exists():
             self._update_without_clone()
             return
+        self._saved_changes = ""
         tidy = QProcess(self)
         self._updating = tidy
         tidy.setWorkingDirectory(str(APP_DIR))
@@ -13640,6 +13978,57 @@ class Bridge(QObject):
             return r.returncode, r.stdout.strip()
         except (OSError, subprocess.SubprocessError):
             return -1, ""
+
+    def _stash_uncommitted(self):
+        """Set every uncommitted change aside into a dated subfolder, then
+        leave the tree clean, so an update can always go ahead and nothing
+        the person was working on is lost. Edited tracked files and whole
+        untracked files are copied under  saved-changes-<when>/  keeping
+        their paths; then the tracked tree is reset and the untracked files
+        are removed (never the new subfolder). Returns the subfolder name,
+        "" when there was nothing to set aside, or None when it could not be
+        done cleanly -- in which case the update must not go on."""
+        code, dirty = self._git_quick("status", "--porcelain")
+        if code != 0:
+            return None
+        if not dirty:
+            return ""
+        sub = "saved-changes-" + time.strftime("%Y%m%d-%H%M%S")
+        dest = APP_DIR / sub
+        try:
+            for line in dirty.splitlines():
+                path = line[3:]
+                if " -> " in path:              # a rename: take the new name
+                    path = path.split(" -> ", 1)[1]
+                path = path.strip().strip('"')
+                if not path or path == sub or path.startswith(sub + "/"):
+                    continue
+                src = APP_DIR / path
+                if not src.exists():            # a deletion: git still has it
+                    continue
+                out = dest / path
+                out.parent.mkdir(parents=True, exist_ok=True)
+                if src.is_dir():
+                    shutil.copytree(src, out, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src, out)
+        except OSError:
+            return None
+        # now make the tree clean, but keep the subfolder just written
+        self._git_quick("reset", "--hard", "HEAD")
+        self._git_quick("clean", "-fd", "--exclude=" + sub)
+        code, dirty = self._git_quick(
+            "status", "--porcelain", "--untracked-files=no")
+        if code != 0 or dirty:
+            return None
+        return sub
+
+    def _saved_note(self):
+        """A sentence for the success message when uncommitted work was set
+        aside first, so the person knows where to find it."""
+        sub = getattr(self, "_saved_changes", "")
+        return ((" Your uncommitted changes were moved to the “%s” "
+                 "folder in the browser folder." % sub) if sub else "")
 
     def _reset_blocker(self):
         """Why a hard reset must NOT run here, or None when it may.
@@ -13714,7 +14103,8 @@ class Bridge(QObject):
             self.updateFinished.emit(
                 "Updated! Restart the browser to finish."
                 + (" (the old version is kept as branch %s)" % backup
-                   if backup else ""))
+                   if backup else "")
+                + self._saved_note())
         else:
             last = (err.strip().splitlines() or ["unknown error"])[-1]
             self.updateFinished.emit("Update failed: " + last)
@@ -13757,6 +14147,19 @@ class Bridge(QObject):
                 # onto this branch's own upstream, never over uncommitted
                 # work, and with the old HEAD kept under a backup branch.
                 blocker = self._reset_blocker()
+                if blocker and "not committed" in blocker:
+                    # don't stop on uncommitted work: set it aside into a
+                    # subfolder, then the tree is clean and the update goes on.
+                    saved = self._stash_uncommitted()
+                    if saved is None:
+                        self._updating = None
+                        self.updateFinished.emit(
+                            "Update stopped: your uncommitted changes could "
+                            "not be set aside safely, so nothing was touched.")
+                        return
+                    if saved:
+                        self._saved_changes = saved
+                    blocker = self._reset_blocker()
                 if blocker:
                     msg = blocker
                 else:
@@ -13769,9 +14172,26 @@ class Bridge(QObject):
                         return
                     msg = "Update stopped: could not keep a backup first."
             elif "would be overwritten" in err:
-                msg = ("Update stopped: this copy has changes that are not "
-                       "committed, and the update touches the same files. "
-                       "Commit or stash them and try again.")
+                # the pull wants files this copy has edited. Set the edits
+                # aside into a subfolder, then run the pull again on a clean
+                # tree so the update still lands.
+                saved = self._stash_uncommitted()
+                if not saved:
+                    # None = could not save; "" = nothing to save, yet the
+                    # pull still balked. Either way do NOT retry (it would
+                    # loop) -- stop clearly instead.
+                    self.updateFinished.emit(
+                        "Update stopped: your uncommitted changes could not "
+                        "be set aside safely, so nothing was touched.")
+                    return
+                self._saved_changes = saved
+                retry = QProcess(self)
+                self._updating = retry
+                retry.setWorkingDirectory(str(APP_DIR))
+                retry.finished.connect(lambda *_: self._update_done(retry))
+                retry.errorOccurred.connect(lambda *_: self._update_done(retry))
+                retry.start("git", ["pull", "--ff-only"])
+                return
             elif "unresolved conflict" in last or "MERGE_HEAD" in last:
                 msg = ("Update failed: a half-finished merge is in the way. "
                        "Try once more — this clears it first now.")
@@ -13787,9 +14207,9 @@ class Bridge(QObject):
             else:
                 msg = "Update failed: " + last
         elif "Already up to date" in out:
-            msg = "You have the newest version \u2713"
+            msg = "You have the newest version \u2713" + self._saved_note()
         else:
-            msg = "Updated! Restart the browser to finish."
+            msg = "Updated! Restart the browser to finish." + self._saved_note()
         self.updateFinished.emit(msg)
 
     @pyqtSlot()
@@ -14004,6 +14424,7 @@ class Bridge(QObject):
             "libUpdateEvery": lib_every,
             # so the settings page need not hardcode the default itself
             "libUpdateDefault": LIB_UPDATE_DAYS,
+            "autoUpdate": bool(c.get("autoUpdate", True)),
             "askDownload": bool(c.get("askDownload", False)),
             "downloadDir": str(self.browser.download_dir(create=False)),
             "downloadDirDefault": str(DOWNLOAD_DIR),
@@ -22124,7 +22545,12 @@ class Browser(QMainWindow):
                 return
             if code == 0 and out.isdigit() and int(out) > 0:
                 self._stranded = False
-                self._show_toast()
+                if self.config.get("autoUpdate", True):
+                    # auto mode: pull it in quietly, no toast, no restart
+                    # prompt -- the new files load next time it is opened
+                    self.bridge.runUpdate()
+                else:
+                    self._show_toast()
         proc.finished.connect(done)
         proc.start("git", ["rev-list", "--count", "HEAD..@{u}"])
 
@@ -22291,6 +22717,46 @@ class Browser(QMainWindow):
             return sys.executable, ["-m", "pip", "install", "--upgrade"] + LIB_PIP
         return "pkexec", ["dnf", "-y", "upgrade"] + LIB_RPMS
 
+    def _lib_auto_cmd(self):
+        """The engine upgrade for auto mode: non-interactive, so it never
+        puts a password box in front of somebody who did not ask for one.
+        On Linux that is `sudo -n` -- it runs only where it was granted
+        without a password and fails quietly otherwise, which is exactly
+        what "without asking" has to mean. The dnf edition folds its own
+        package in so the browser updates itself too; a git checkout gets
+        its code from the git pull above instead. On Windows/mac the
+        wheels go into his own environment and no elevation exists."""
+        if sys.platform in ("win32", "darwin"):
+            return sys.executable, ["-m", "pip", "install", "--upgrade"] + LIB_PIP
+        pkgs = list(LIB_RPMS)
+        if str(APP_DIR).startswith("/usr"):
+            pkgs.append("homebrowser")
+        return "sudo", ["-n", "dnf", "-y", "upgrade"] + pkgs
+
+    def _auto_lib_update(self):
+        """Auto mode found engine updates: install them without a word.
+        Guards against a second tick landing on top of this one, and runs
+        the non-interactive upgrade. It reaches no UI either way: auto
+        updates never report, they just keep things fresh."""
+        if self._lib_checking:
+            return
+        self._lib_checking = True
+        program, args = self._lib_auto_cmd()
+        try:
+            self._lib_run(program, args, self._auto_lib_done)
+        except Exception:
+            self._lib_checking = False
+            self._lib_stamp()
+
+    def _auto_lib_done(self, code, _out):
+        """However it went, this round is over. Stamped whether the
+        upgrade ran, found nothing, or could not elevate without a
+        password -- a silent feature that retried every tick would be a
+        silent feature hammering dnf. Turning on a passwordless rule
+        later takes effect at the next gate, not this one."""
+        self._lib_checking = False
+        self._lib_stamp()
+
     def _lib_run(self, program, args, done):
         """One command, asynchronously, answered as (exit code, output).
 
@@ -22377,6 +22843,10 @@ class Browser(QMainWindow):
         if not found:
             self._lib_stamp()
             return          # the common case, and it is silent on purpose
+        if self.config.get("autoUpdate", True):
+            # auto mode: install the engine update without asking
+            self._auto_lib_update()
+            return
         self._show_lib_toast()
 
     def _show_lib_toast(self):
@@ -41621,6 +42091,11 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         return want_bottom
 
     # ---- engines and keywords (wave 25) ----
+    def own_engine_urls(self):
+        """Just the addresses of his own engines, for the two places
+        that have to recognise a results page (see search_query_of)."""
+        return [str(row.get("url") or "") for row in self.own_engines()]
+
     def own_engines(self):
         """His own search engines, on top of the built-in ones.
 
@@ -45537,10 +46012,18 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
                     break
 
         seen = set()
+        own_engines = self.own_engine_urls()
         if want["history"] and scope in ("", "history"):
             for entry in reversed(self.history[-4000:]):
                 url = entry.get("url", "")
                 if url in seen or not allowed(url):
+                    continue
+                if is_search_result(url, own_engines):
+                    # what he searched for, handed back to him. The
+                    # title of a results page IS the query, so typing
+                    # any word of a past search matched it and the row
+                    # read like a saved search. He asked for this gone;
+                    # the history page still has it, the bar does not.
                     continue
                 hay = (entry.get("title", "") + " " + url).lower()
                 if not all(w in hay for w in words):
@@ -45614,14 +46097,34 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         self._suggest_actions = actions
         return rows
 
+    def _show_rows(self, rows):
+        """Put rows in the drop-down and open it -- the only place that
+        does, so it can never open with a row already picked.
+
+        Measured before this existed: the popup\'s row 0 was current
+        the moment it opened, and on a real desktop the popup holds the
+        keyboard, so Enter went to the popup and activated that row
+        instead of reaching the bar. Typing `i like pancakes` and
+        pressing Enter loaded the old results page row 0 was pointing
+        at -- the bar "trapping" him. With no current row QCompleter
+        hides the popup and lets the key through to returnPressed, and
+        Down still picks row 0 for anyone who wants it."""
+        self.suggest_model.setStringList(rows)
+        if not rows or not self.urlbar.hasFocus():
+            return
+        self.completer.complete()
+        popup = self.completer.popup()
+        if popup is not None:
+            popup.setCurrentIndex(QModelIndex())
+            popup.clearSelection()
+
     def _show_empty_rows(self):
         if self.urlbar.text().strip() or not self.urlbar.hasFocus():
             return
         rows = self.empty_bar_rows()
         if not rows:
             return
-        self.suggest_model.setStringList(rows)
-        self.completer.complete()
+        self._show_rows(rows)
 
     def _fetch_suggestions(self):
         # not while a private tab is in front: a suggestion is this
@@ -45638,8 +46141,7 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         text = text.lower()
         if len(text) < 2 or "://" in text:
             if mine:
-                self.suggest_model.setStringList(mine[:10])
-                self.completer.complete()
+                self._show_rows(mine[:10])
             return
         domains = [d for d in COMMON_SITES + sorted(self.known_hosts)
                    if d.startswith(text) or d.split(".")[0].startswith(text)
@@ -45672,9 +46174,7 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
             # hand the search engine a word-by-word account of what he
             # is looking for. The guesses from his own history and the
             # common-site list still show.
-            self.suggest_model.setStringList(domains)
-            if domains and self.urlbar.hasFocus():
-                self.completer.complete()
+            self._show_rows(domains)
             return
         url = QUrl(SUGGEST_URL)
         q = QUrlQuery()
@@ -45698,9 +46198,7 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         if self.urlbar.text().strip().lower() != text:
             return  # user typed on; a newer request is coming
         items = domains + [s for s in searches if s not in domains][:6]
-        self.suggest_model.setStringList(items)
-        if items and self.urlbar.hasFocus():
-            self.completer.complete()
+        self._show_rows(items)
 
     def bar_text_for(self, url):
         """What the address bar shows for a page.
@@ -45711,22 +46209,13 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         text = url.toString()
         if not self.config.get("searchInBar", True):
             return text
-        host = url.host().removeprefix("www.")
-        for key, (_name, pattern) in SEARCH_ENGINES.items():
-            if QUrl(pattern.format("x")).host().removeprefix("www.") != host:
-                continue
-            field = QUrlQuery(QUrl(pattern.format("x")).query())
-            names = [k for k, v in field.queryItems() if v == "x"]
-            query = QUrlQuery(url.query())
-            for name in names:
-                if query.hasQueryItem(name):
-                    got = query.queryItemValue(
-                        name, QUrl.ComponentFormattingOption.FullyDecoded)
-                    if got:
-                        # a query string writes a space as +, and a real
-                        # plus as %2B, which is already decoded by here
-                        return got.replace("+", " ")
-        return text
+        # this walked SEARCH_ENGINES itself until 2026-11-02. It is the
+        # same walk the drop-down's filter needs, so it moved out to
+        # search_query_of and both ask that. Two things changed with
+        # the move, both measured: a map (`/maps?q=berlin`) is no
+        # longer shown as a search for Berlin, and `c++` is no longer
+        # shown as two spaces.
+        return search_query_of(url, self.own_engine_urls()) or text
 
     def _remember_host(self, url):
         host = url.host()
@@ -46819,6 +47308,7 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         # front rather than about which jar it came from.
         self.watch_cookies(profile)
         profile.scripts().insert(self._google_script())
+        profile.scripts().insert(self._youtube_script())
         profile.scripts().insert(self._chrome_stub_script())
         profile.scripts().insert(self._force_menu_script())
         profile.scripts().insert(self._error_hook_script())
@@ -46938,6 +47428,19 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
         script.setSourceCode(
             GOOGLE_LIGHT_JS if self.config.get("googleLight", True)
             else GOOGLE_BLACK_JS)
+        return script
+
+    def _youtube_script(self):
+        """Strip YouTube's ads from its own data so the player never
+        blocks after one video. Runs only on YouTube (the script gates
+        itself on the hostname)."""
+        script = QWebEngineScript()
+        script.setName("youtube-ads")
+        script.setInjectionPoint(
+            QWebEngineScript.InjectionPoint.DocumentCreation)
+        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        script.setRunsOnSubFrames(True)
+        script.setSourceCode(YOUTUBE_JS)
         return script
 
     def _theme_script(self):
@@ -53898,6 +54401,14 @@ html.__reader .__readerbody pre, html.__reader .__readerbody code {
             if page_host in off or any(page_host.endswith("." + one)
                                        for one in off):
                 return ""
+        # YouTube is handled in the page, not here: its video ads live
+        # inside its own player data (see YOUTUBE_JS), and blocking its
+        # requests at the network is the one thing that trips its
+        # "turn off your ad blocker" wall. So never network-block a
+        # YouTube page -- the script removes the ads without being seen.
+        if page_host == "youtube.com" or page_host.endswith(".youtube.com") \
+                or page_host.endswith("youtube-nocookie.com"):
+            return ""
         hit = rules.blocks(text, page_host, request_kind(kind))
         if hit:
             counted = getattr(self, "_ad_counted", None)
@@ -64419,12 +64930,22 @@ def _install_proxy_flags():
     # switches on every GPU feature (raster, WebGL, ...) for drivers
     # Chromium knows to be broken, not only video decode.
     if "PlatformHEVCDecoderSupport" not in env:
-        nvidia = Path("/proc/driver/nvidia/version").exists()
-        env += (" --enable-features=PlatformHEVCDecoderSupport"
-                ",VaapiVideoDecoder,VaapiVideoDecodeLinuxGL"
-                ",AcceleratedVideoDecodeLinuxGL"
-                + (",VaapiOnNvidiaGPUs --ignore-gpu-blocklist"
-                   if nvidia else ""))
+        feats = "PlatformHEVCDecoderSupport"
+        # Hardware video decode is opt-in (the "vaapi" toggle). Forced on,
+        # a card/driver that cannot really do it -- NVIDIA VA-API most of
+        # all -- decodes every frame to black while the page renders fine.
+        # Off by default means software decode, which always draws; the
+        # toggle turns it on for smoother 4K where the hardware supports it.
+        if config.get("vaapi", False):
+            nvidia = Path("/proc/driver/nvidia/version").exists()
+            feats += (",VaapiVideoDecoder,VaapiVideoDecodeLinuxGL"
+                      ",AcceleratedVideoDecodeLinuxGL"
+                      + (",VaapiOnNvidiaGPUs" if nvidia else ""))
+            env += " --enable-features=" + feats
+            if nvidia:
+                env += " --ignore-gpu-blocklist"
+        else:
+            env += " --enable-features=" + feats
     # the import-time finder honours WIDEVINE_PATH and picks the newest
     # copy (incl. Chrome's updater ones under ~/.config); the other is
     # the fallback. The flag it set was stripped just above.

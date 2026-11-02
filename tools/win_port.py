@@ -140,6 +140,36 @@ def matches(name, patterns):
     return any(fnmatch.fnmatch(name, p) for p in patterns)
 
 
+def linux_repo(manifest):
+    """The Linux checkout a port reads, as a path.
+
+    WIN_PORT_LINUX_REPO points the port at another checkout for one
+    run. The manifest is committed and public, so it names ~/browser; a
+    second clone is a reason to override it, not a reason to edit it.
+
+    `~` is resolved against the ACCOUNT, not $HOME. Every suite in this
+    edition runs with HOME set to a throwaway directory -- that is the
+    house rule, because DATA_DIR follows HOME on this platform -- and
+    Path.expanduser() reads $HOME, so under the suite `~/browser`
+    resolved inside the scratch dir. --check then reported "is not
+    here, so drift is unknown" and exited 0: the drift half of the
+    check never ran in the one environment where it always runs, and
+    said so in a line nobody reads twice.
+    """
+    override = os.environ.get("WIN_PORT_LINUX_REPO")
+    if override:
+        return Path(override)
+    raw = str(manifest["linux_repo"])
+    if raw.startswith("~"):
+        try:
+            import pwd
+            home = pwd.getpwuid(os.getuid()).pw_dir
+        except Exception:                               # noqa: BLE001
+            home = os.path.expanduser("~")
+        return Path(home + raw[1:])
+    return Path(raw)
+
+
 def names(seq):
     """The file lists carry inline commentary — entries starting with a
     '#' are prose, not paths. JSON has no comments, and a list of a
@@ -218,12 +248,7 @@ def three_way(base, ours, theirs, label):
 
 def generate(manifest, to_rev, verbose=True):
     """Build the whole tree in memory. Returns {name: text}."""
-    # WIN_PORT_LINUX_REPO points the port at another checkout for one run.
-    # The manifest is committed and public, so it names ~/browser; a second
-    # clone (a bare mirror of the Linux repo, a worktree at some other
-    # commit) is a reason to override it, not a reason to edit it.
-    linux = Path(os.environ.get("WIN_PORT_LINUX_REPO")
-                 or manifest["linux_repo"]).expanduser()
+    linux = linux_repo(manifest)
     base_rev = manifest["ported_from"]
     if not linux.is_dir():
         raise PortError("linux_repo %s is not there" % linux)
@@ -419,6 +444,46 @@ def relation(repo, base, branch=None):
     return "diverged" if shared else "unrelated"
 
 
+def unlisted_upstream(manifest, rev):
+    """Upstream suites this manifest has never classified.
+
+    tests/test_workflow.py checks that every suite ON DISK is in one of
+    the lists. That is the easy direction, and it is not the one that
+    rots: a suite upstream ADDS is in no list at all, and a file in no
+    list reads exactly like a file that is handled. Twelve had
+    collected by 2026-11-02 -- test_tmpscratch.py and test_barsuggest.py
+    among them, both written for fixes this edition was checking by
+    hand at the time, because it did not know the suites existed.
+
+    The same shape as the suite list that stopped at twenty while the
+    Linux one grew to eighty-seven. That was fixed by having runall.sh
+    read the folder instead of a list, which made every suite PRESENT
+    run -- and said nothing about the ones that never arrived.
+
+    Returns the names, sorted, or []. Never raises: --check reports
+    what a port refuses.
+    """
+    linux = linux_repo(manifest)
+    if not linux.is_dir():
+        return []
+    listed = soft(linux, "ls-tree", "-r", "--name-only", rev)
+    if listed is None:
+        return []
+    known = set(names(manifest["merge_files"] + manifest["copy_files"]))
+    known |= set(names(manifest.get("win_only_files") or []))
+    known |= set(manifest.get("adopted_pending") or {})
+    skip = tuple(names(manifest.get("linux_only_files") or []))
+    out = []
+    for name in listed.splitlines():
+        base = name.rsplit("/", 1)[-1]
+        if not (base.startswith("test_") and base.endswith(".py")):
+            continue
+        if name in known or (skip and name.startswith(skip)):
+            continue
+        out.append(name)
+    return sorted(out)
+
+
 def drift(manifest):
     """How far this tree is behind the Linux repo it comes from.
 
@@ -427,10 +492,7 @@ def drift(manifest):
     the lines to print -- it never raises, because being unable to find
     the Linux repo is a thing to report, not a reason to fail.
     """
-    # the same override generate() honours, or --check would report drift
-    # against one tree while a port read another
-    linux = Path(os.environ.get("WIN_PORT_LINUX_REPO")
-                 or manifest["linux_repo"]).expanduser()
+    linux = linux_repo(manifest)        # the same one generate() reads
     base = manifest["ported_from"]
     if not linux.is_dir():
         return ["  linux repo   %s is not here, so drift is unknown" % linux]
@@ -605,9 +667,30 @@ def main():
         print("  checked: this tree's own regions, not parity with Linux")
         for line in drift(manifest):
             print(line)
+        stray = unlisted_upstream(manifest, manifest["ported_from"])
+        if stray:
+            print("  unlisted     %d upstream suite(s) in no list: %s"
+                  % (len(stray), ", ".join(stray)))
+            print("               a port refuses while that is true")
         return 0
 
     print("Regenerating the Windows edition\n")
+    # Before anything is read: a suite upstream has that no list here
+    # mentions is a decision somebody has to make, and the port is when
+    # they are holding the tool. Classifying it is one line in the
+    # manifest -- copy_files to take it, linux_only_files to decline it.
+    # Reporting this and carrying on is what the "stale main" paragraph
+    # did for weeks while being perfectly correct.
+    stray = unlisted_upstream(manifest, args.to)
+    if stray:
+        print("STOPPED. Nothing was written.\n", file=sys.stderr)
+        print("%d upstream suite(s) are in no list in win_port.json:"
+              % len(stray), file=sys.stderr)
+        for one in stray:
+            print("  - %s" % one, file=sys.stderr)
+        print("\nPut each in copy_files (take it) or linux_only_files "
+              "(decline it), then re-run.", file=sys.stderr)
+        return 1
     try:
         files, to_sha = generate(manifest, args.to)
         verify(files, manifest)
