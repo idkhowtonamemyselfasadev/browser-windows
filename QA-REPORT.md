@@ -1317,17 +1317,25 @@ past 70 minutes is still extrapolation.
 
     start.html (the default tab)   +4.35 MB/min   10/10 steps up
     minimal + 1s clock             +1.10 MB/min   10/10 steps up
-    minimal, static                +0.23 MB/min    8/10 steps up
-    about:blank                    +0.25 MB/min    6/10 steps up
+    minimal, static                +0.42 MB/min    8/10 steps up
+    about:blank                    +0.59 MB/min    6/10 steps up
 
-Two independent controls agree on a floor near **0.24 MB/min** — that is the
-offscreen software compositor itself and is almost certainly a property of this
-measurement environment rather than of the browser. Against that floor:
+**The two floor figures are corrected from +0.23 and +0.25, 2026-11-02.** Both
+of those arms open with a startup transient that *drops* — −4.1 MB and
+−5.7 MB on the first sample — and a least-squares fit over all eleven points
+reads that drop as part of the trend, pulling the slope down by roughly half.
+Dropping only `t=0` gives +0.42 and +0.59, and the clock arm is unaffected
+(+1.10 → +1.11) because it has no such transient. The arms were run and
+reported in one sitting; the fit was never checked against the points.
 
-* **the start page: +4.13 MB/min excess.** The finding.
+So the floor is nearer **0.5 MB/min**, not 0.24. Against that floor:
+
+* **the start page: +3.93 MB/min excess.** The finding.
 * **a bare 1-second clock: +0.87 MB/min excess, 10 of 10 samples up.** Its own
   small finding: ~14.5 KB retained per tick for writing `textContent` on two
-  nodes. It explains **21%** of the start page.
+  nodes. Against the corrected floor it explains **about 17%** of the start
+  page's excess, not the 21% first reported — and that figure was already
+  flagged as the weakest number here, good to no better than a factor of two.
 * **3.26 MB/min is unattributed. It IS page-driven — a claim that it was not
   is withdrawn, 2026-11-02, after browser-linux read the source.**
   `start.html:2792` is an unconditional `setInterval(tick, 1000)`.
@@ -1387,6 +1395,38 @@ Each was caught by a control, none by re-reading the reasoning. The three-cycle
 run of 2026-10-29 also recorded the main process as *converging* on
 `+32.7 / +0.8 / +0.3`; over eight cycles it reads `199.1, 199.1, 199.1` and then
 climbs to 202.2. Three points could not have told which.
+
+### The engine half does not fit this box, and the reason may matter
+
+browser-linux's clean arms decompose the leak into two, in two allocators:
+**leak A** in `[anon:v8]`, page-driven, +13.4/+1.4/+1.1 MB across 60/~1/0
+`textContent` writes a minute, worth ~1.4 MB/min and cut 41% by guarding the
+clock; and **leak B** in `[heap]`, +14.4/+14.4/+14.3, flat to a tenth across
+the same three arms, worth ~1.65 MB/min and described as reachable by no page
+edit.
+
+**Leak B at ~1.65 MB/min cannot be present on this box as a page-independent
+term, because two arms here came in underneath it:** minimal-static at
+**+0.42** and `about:blank` at **+0.59 MB/min**, three to four times smaller. A
+floor cannot sit below a constant that is supposed to be inside it.
+
+Two readings, and they call for different fixes:
+
+1. **This box's leak B really is ~0.5 MB/min**, and `start.html`'s 4.35 is
+   mostly the page-driven half. Then the clock guard would cut *this* number a
+   lot rather than barely — the opposite of a V8-near-zero divergence.
+2. **Leak B is not page-independent.** It may scale with how much page there
+   is, and linux's three arms varied **writes per minute at a constant page**.
+   Writes-invariant is not DOM-invariant: "flat across 60/1/0 writes" is
+   exactly what was measured, and "no page edit can reach it" is a larger claim
+   that does not follow from those three arms.
+
+**The arm that separates them has not been run by anyone:** a big DOM with no
+writes — `start.html` with the clock disabled. Linux varied writes at constant
+DOM; the four arms here varied DOM and writes together, so neither isolates
+DOM. If leak B tracks DOM size, reducing what the start page builds **is** a
+page-side mitigation and reading 2 as settled would have closed off the cheaper
+fix. It is one arm, and it is queued alongside the per-kind split.
 
 ### Not established, and not to be claimed
 
