@@ -78,6 +78,36 @@ COSTLY = {
 }
 
 
+def _target_name(target):
+    """The callback a timer target names, or None if a reader is needed.
+
+    A single-call lambda is NOT unresolvable: `lambda: self._save(quiet=True)`
+    names its target right there in the body. browser-mac resolved its 11
+    lambda-armed repeating timers by hand -- 9 had exactly one named target,
+    and one of those nine turned out to hold a costly construct that neither
+    edition's tool had ever seen. So the common case is resolvable and only
+    the remainder needs a reader: a lambda whose body does inline work, or
+    calls more than one thing, stays unresolved and is counted as such.
+    """
+    if isinstance(target, ast.Attribute):
+        return target.attr
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Lambda):
+        calls = [n.func for n in ast.walk(target.body)
+                 if isinstance(n, ast.Call)]
+        if isinstance(target.body, ast.Call):
+            calls = [target.body.func] + [
+                n.func for n in ast.walk(target.body) if isinstance(n, ast.Call)
+                and n is not target.body]
+        named = {f.attr if isinstance(f, ast.Attribute) else
+                 f.id if isinstance(f, ast.Name) else None for f in calls}
+        named.discard(None)
+        if len(named) == 1:
+            return named.pop()
+    return None
+
+
 def _arming_sites(tree):
     """(ticking, shot, unresolved) from the AST, not a regex.
 
@@ -104,12 +134,9 @@ def _arming_sites(tree):
             bag, target = shot, node.args[1]
         else:
             continue
-        if isinstance(target, ast.Attribute):
-            name = target.attr
-        elif isinstance(target, ast.Name):
-            name = target.id
-        else:
-            unresolved += 1          # lambda, partial, call, subscript...
+        name = _target_name(target)
+        if name is None:
+            unresolved += 1          # partial, subscript, inline lambda work
             continue
         bag.setdefault(name, []).append(node.lineno)
     return ticking, shot, unresolved
@@ -123,10 +150,23 @@ def sweep(src):
     """
     lines = src.splitlines()
     tree = ast.parse(src)
-    funcs = {}
+    funcs, selfarm = {}, set()
     for n in ast.walk(tree):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            funcs.setdefault(n.name, []).append((n.lineno, n.end_lineno or n.lineno))
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        funcs.setdefault(n.name, []).append((n.lineno, n.end_lineno or n.lineno))
+        # Does it re-arm ITSELF? `"singleShot" in body` was a substring test,
+        # so any large function containing an unrelated singleShot was called
+        # repeating -- new_tab is 276 lines, is armed by a ONE-SHOT
+        # `singleShot(0, lambda: self.new_tab(...))`, and was classified as
+        # repeating because somewhere inside it there is a singleShot for
+        # something else. Asked properly now: a singleShot inside this
+        # function whose target resolves to this function's own name.
+        for c in ast.walk(n):
+            if (isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                    and c.func.attr == "singleShot" and len(c.args) >= 2
+                    and _target_name(c.args[1]) == n.name):
+                selfarm.add(n.name)
 
     ticking, shot, unresolved = _arming_sites(tree)
 
@@ -149,13 +189,9 @@ def sweep(src):
         for lo, hi in spans:
             body = "\n".join(lines[lo - 1:hi])
             found |= {why for tok, why in COSTLY.items() if tok in body}
-            if "singleShot" in body:
-                found.add("@rearms")
             if hi - lo > span_first:
                 span_first = hi - lo
-        rearms = "@rearms" in found
-        found.discard("@rearms")
-        return lo_first, span_first, sorted(found), rearms, len(spans)
+        return lo_first, span_first, sorted(found), name in selfarm, len(spans)
 
     repeating, oneshot, named = [], [], 0
     for name, sites in sorted(ticking.items()):
@@ -264,12 +300,27 @@ class T:
         self.x = QLocale().toString(QTime.currentTime())
 '''
     brep, bshot, n_tick, n_shot, unres = sweep(blind)
-    check("KNOWN BLIND: a lambda-armed callback is not named as one",
-          not any(n == "hidden" for n, *_ in brep) and n_tick == 0)
-    check("KNOWN BLIND: the lambda site is COUNTED as unresolved",
-          unres >= 1)
+    # These two CHANGED when single-call lambdas became resolvable, and the
+    # pinning tests are what said so -- they failed, which is the whole point
+    # of pinning a limit rather than describing it. A single-call lambda now
+    # resolves to its one named target; what stays unresolved is a lambda
+    # doing inline work or calling more than one thing.
+    check("a single-call lambda RESOLVES to its one named target",
+          any(n == "hidden" for n, *_ in brep) and n_tick == 1)
     check('no callback is ever named "lambda"',
           not any(n == "lambda" for n, *_ in brep + bshot))
+    multi = '''
+class T:
+    def __init__(self):
+        t = QTimer(self)
+        t.timeout.connect(lambda: (self.one(), self.two()))
+        QTimer.singleShot(5, lambda: [x for x in self.rows])
+'''
+    _, _, mt, _, munres = sweep(multi)
+    check("KNOWN BLIND: a lambda calling TWO things stays unresolved",
+          mt == 0 and munres >= 1)
+    check("KNOWN BLIND: a lambda doing inline work stays unresolved",
+          munres >= 2)
 
     # 5. browser-mac's pinning test: two defs of one name, only the SECOND
     #    costly. scan() used to return on the first and call it clean -- a
@@ -313,6 +364,22 @@ class T:
                          "        self.x = QLocale().toString(QTime.currentTime())\n"
                          "        QTimer.singleShot(1000, self.once)")
     rep3, shot3, _, _, _ = sweep(rearm % "self.x = 1")
+    # A big function containing an UNRELATED singleShot is not re-arming.
+    big = '''
+class T:
+    def __init__(self):
+        QTimer.singleShot(0, lambda: self.wide())
+    def wide(self):
+        self.x = QLocale().toString(QTime.currentTime())
+        QTimer.singleShot(10, self.other)
+    def other(self):
+        return 1
+'''
+    wrep, wshot, _, _, _ = sweep(big)
+    check("an unrelated singleShot inside a body is NOT self-re-arming",
+          not any(n == "wide" for n, *_ in wrep)
+          and any(n == "wide" for n, *_ in wshot))
+
     check("a singleShot callback that re-arms counts as repeating",
           any(n == "once" for n, *_ in rep3) and not any(n == "once" for n, *_ in shot3))
     print("\n%s" % ("selftest passed" if ok else "SELFTEST FAILED"))

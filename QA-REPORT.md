@@ -1540,11 +1540,11 @@ Swept mechanically — every `timeout.connect` target and every
 constructs (locale and formatter construction, regex compile, `setStyleSheet`
 re-parse, font metrics, full teardown, subprocess, file read, pixmap decode):
 
-    40 REPEATING callbacks (timeout.connect, or a singleShot that re-arms)
+    45 REPEATING callbacks (timeout.connect, or a singleShot that re-arms)
      5 contain a costly construct
      1 is the defect shape
-    26 one-shot singleShot targets, listed separately -- NOT the shape
-    64 arming sites UNRESOLVED -- lambda / partial / expression targets
+    53 one-shot singleShot targets, listed separately -- NOT the shape
+    30 arming sites UNRESOLVED -- lambda / partial / inline-work targets
 
 **Corrected, 2026-11-02, after browser-mac read the output.** The first run of
 this sweep reported *"64 callbacks, 8 with a costly construct"*. That figure
@@ -1600,7 +1600,28 @@ browser-mac's `Dock._step`. A duplicated name now prints
 `[N DEFS of this name -- verify which one is armed]`, which shows the ambiguity
 instead of resolving it silently.
 
-**So this count has been wrong four times: 64, 42, 40 with 4 hits, 40 with 5.**
+**A fifth and sixth revision, both from browser-mac pushing further.**
+
+*Lambdas were never unresolvable.* mac resolved its 11 lambda-armed repeating
+timers by hand — **9 named exactly one target** — and one of those nine held a
+costly construct neither edition's tool had ever seen. So the resolvable case
+is the *common* case, not an edge. `_target_name` now resolves a single-call
+lambda to its one target, which moved 34 sites out of "unresolved" here and
+surfaced **`_save_groups`**, a 30-second repeating timer that serialises the
+whole session.
+
+*And the re-arm test was a substring match.* `"singleShot" in body` meant any
+large function containing an unrelated `singleShot` was classed as repeating.
+**`new_tab` is 276 lines, armed by a one-shot `singleShot(0, lambda:
+self.new_tab(url=target))`, and was listed as repeating** because somewhere
+inside it there is a `singleShot` for something else. It now asks properly — a
+`singleShot` inside the body whose target resolves to the function's own name —
+and `new_tab` and `_drop_private_profile` both left the repeating list, the
+latter correctly: it re-arms off a download *finishing*, an event and not a
+tick.
+
+**So this count has been wrong six times: 64, 42, 40/4, 40/5, then 45/5 twice
+over.**
 Every correction came from outside — three times from browser-mac reading the
 output, once from writing a test aimed at the tool's own blind spot. **None came
 from re-reading the code.** That is the whole pattern of today in one artifact.
@@ -1636,8 +1657,23 @@ switched on — the timer starts in `showEvent` and stops in `hideEvent`, which
 is correct and is why this is not worse. browser-mac confirms the same bounded
 lifecycle in its copy.
 
-**The fix, with the weight where mac puts it rather than where this section
-first put it.** `QLocale()` is the headline and `_relayout` is the cost. mac
+**The fix is house style in this same file, twice over — which is the strongest
+thing in this row.** It is not a pattern being imported from `start.html`
+twenty thousand lines away:
+
+    backup_bookmarks   returns early if today's backup file already exists
+    _save_groups       returns early on an unchanged serialised snapshot
+    _show_time         writes unconditionally, 3x a minute, for a string
+                       that changes once a minute
+
+`_save_groups` even carries the comment spelling out the reasoning — *"an idle
+browser rewriting its config forever is disk churn"*. So `_show_time` is the
+**outlier among its own neighbours**, the codebase has already answered "is the
+guard worth it" twice, and a cache-only half-fix is visibly incomplete against
+the two guarded siblings. browser-mac's framing, and it lands harder than any
+measurement would.
+
+**The weight, where mac puts it rather than where this section first put it.** `QLocale()` is the headline and `_relayout` is the cost. mac
 counted what its `_relayout` actually does: three `sizeHint()` calls, the whole
 pin-fit arithmetic, a `move`/`show` on **every** pin button, and a closing
 `self.update()` — a full repaint of the bar. So guarding `setText` on the
@@ -1690,6 +1726,19 @@ Reported because a sweep that only lists its hits cannot be checked:
   anything else on the list, and is a **self-terminating pump**: one block per
   pass, `return False` the moment the queue is empty. Its `json.dumps` is the
   payload being sent, not overhead.
+* **`_save_groups`** — a **new rejection category, and browser-mac's find:
+  the costly construct IS the guard.** The 30-second autosave builds
+  `json.dumps([data, session_tabs, self.sessions])` and returns early when it
+  matches the stored snapshot. The serialisation *is* the change-detection key,
+  so the expensive expression exists in order to avoid the expensive
+  *operation*. Verified in this tree: `if quiet and snap == getattr(self,
+  "_session_snap", None)`. **No token scanner can tell this from the defect** —
+  it is a reader's call every time, which is also the honest conclusion about
+  `forget`.
+
+That category is distinct from `_caption_tick`'s. There the expensive thing is
+the **payload**; here it is the **guard**. Both look identical to a scanner and
+neither is the bug.
 * **`run_scheduled_tabs`**, **`backup_bookmarks`**, **`_check_updates`**,
   **`forget`** are **one-shot** — see the correction above. `backup_bookmarks`
   additionally early-returns when today's file already exists, which is exactly
