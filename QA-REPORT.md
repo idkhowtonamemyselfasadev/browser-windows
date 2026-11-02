@@ -1543,11 +1543,31 @@ string having changed is the half that pays, because it skips `adjustSize`,
 half. Same two lines either way, but the order of importance is the reverse of
 what was written here first.
 
-**It is one bug in three copies.** `browser.py` is hand-ported per edition, so
-unlike the shared HTML this needs the same fix three times. mac confirmed
-`TaskBar._show_time` verbatim — same 20-second tick, same fresh `QLocale()`,
-same unconditional `setText` + `adjustSize` + `_relayout`. Android is **N/A and
-cleanly so**: no clock or taskbar widget exists in that tree, and its shipped
+**It is one bug in three copies, and no edition has fixed it.** `browser.py` is
+hand-ported per edition, so unlike the shared HTML this needs the same fix
+three times:
+
+    windows   browser.py:20930   this tree, verified here
+    mac       browser.py          browser-mac, verified in its own repo
+    linux     browser.py:20746   browser-linux main bc35c0c, verified by server-71
+
+Same five lines verbatim in each — 20-second tick, fresh `QLocale()` per tick,
+unconditional `setText` + `adjustSize` + `_relayout`.
+
+**The linux line is cited on server-71's verification, not mine, and that is
+deliberate.** `~/claude/browser-linux` is another session's folder and this
+edition stays out of it. Recording whose check each row rests on, because a
+citation nobody owns is how the next paragraph's mistake happens.
+
+**Which tree was checked matters here, and once it didn't.** An earlier
+confirmation of the linux copy was taken from `~/browser` — the dead
+`engine-view` tree, `28a6995`, 88 commits behind, which does not ship. The bug
+is in there too, which is exactly why it was convincing. The shipping source is
+`~/claude/browser-linux` at `bc35c0c`. Same class as this edition's own
+`win_port.py --to` defaulting to a local `main` nobody fetches: a stale tree
+answers, and the answer looks like an answer.
+
+Android is **N/A and cleanly so**: no clock or taskbar widget exists in that tree, and its shipped
 page JS has zero hits for `Intl.*`, `toLocaleString`, `new RegExp` or
 `setInterval` — nothing there to rebuild a locale for.
 
