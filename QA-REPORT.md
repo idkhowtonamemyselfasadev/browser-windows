@@ -611,6 +611,8 @@ a forgiving fallback returning a plausible wrong value.
 | W-S02 | Five suites adopted from other editions were in **no** list in `win_port.json` — not `copy_files` (the port would raise), not `win_only` (they are not ours). A file in no list reads exactly like a file that is handled | Low | **fixed** |
 | W-B20 | `_boot.py:18` makes a scratch profile with `mkdtemp` and never removes it — no `atexit`, no `rmtree`. `tests/harness.py` has `_tidy_scratch()` doing exactly that for its own prefix, with a docstring describing this consequence. **1348 directories, 2.0 GB, and `/tmp` is a tmpfs, so that is RAM** | Medium | **OPEN — upstream** |
 | W-B19 | Two injected lines draw in `W.accent` while their dead fallback names a different token: the find-in-page hit marks on the scroll rail (`#f9e2af` = `yellow`) and the accessibility checker's **no alt text** outline (`#f38ba8` = `red`). Both render in the link/focus colour, so neither reads as what it is. The payloads send only `accent`/`bg`/`text`, so the fallback is the only record of the intent | Medium | **OPEN — needs the payload first** |
+| W-S03 | **A suite's verdict depends on whether the developer has pushed.** `_check_updates` (`browser.py:22464`) is on an ungated 3 s `singleShot` and runs `git fetch`, then `_count_behind` runs `git merge-base --is-ancestor HEAD @{u}`: exit 1 sets `_stranded` and raises a toast. HEAD stops being an ancestor the moment there are unpushed commits, so `check("no toast is up at all", ...)` fails. Proved A/B: in sync 110+132 checks 0 failed, one `--allow-empty` commit 2 and 1 failed. **CI checks out the pushed ref, so CI is always green and the dev box is the only place it fails** | Medium | **OPEN — upstream, shared `browser.py`** |
+| W-B22 | The own-requests log promises to write down the update check — `OwnRequests`' docstring calls it "a complete answer", `settings.html:2972` names it to the user — and `createRequest` is the only writer. The update check bypasses it: the only two `urllib.request.urlopen` calls in the file (`869`, `881`) are both in it, plus a `QProcess git fetch`. Separately, *Auto updates* **off** does not stop the startup fetch: `_check_updates` never reads `autoUpdate`. Source-verified, not executed | Medium | **OPEN — upstream; the no-`.git` path is Windows' shipping case** |
 | W-B21 | While `start.html` (the page the browser opens on) is the visible tab, the QtWebEngine **compositor process** grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
@@ -1369,6 +1371,82 @@ edition's to make.
 
 ---
 
+## W-B22 — the update check is the one connection the own-requests log never writes down
+
+**Severity: Medium.** Nothing of his goes out: the only thing sent is a request
+for a public repository's ref advertisement. This is a consent-and-honesty
+defect, not a leak, and it should not be read as one.
+
+**Source-verified, NOT executed.** browser-linux is measuring on this same box
+and I am staying off it, so everything below is read from the file. The
+empirical check is queued, and until it runs this section is reasoning about
+code rather than a record of behaviour.
+
+### The promise
+
+`OwnRequests` (`browser.py:1368`) is the browser's own network manager, and its
+docstring is unusually explicit:
+
+> *"Every fetch the browser makes for itself — search suggestions, **the update
+> check**, a favicon, a list refresh, a lyrics lookup — goes through one
+> manager... So overriding this one method is **a complete answer** to 'what
+> does the browser send, apart from the pages I open'."*
+
+`settings.html:2972` repeats it to the user, under *"Keep writing down what the
+browser itself sends"*: *"Connections the browser makes for itself —
+suggestions, **the update check**, favicons."*
+
+### The code
+
+`OwnRequests.createRequest` is the **only** writer — `self.log.append` appears
+nowhere else in the file — so a connection that does not go through this manager
+is not in the log. The update check does not go through it, by either route:
+
+* **packaged build** (no `.git` — and that is the **Windows shipping case**, so
+  for this edition it is the normal path, not the fallback): `_check_updates`
+  starts `_check_zip_update` on a daemon thread, which calls
+  `_remote_main_sha()` → `urllib.request.urlopen` (`browser.py:869`), raw
+  stdlib, nowhere near Qt. On a fresh install it also calls
+  `_fetch_main_zip()` → `urllib.request.urlopen` (`browser.py:881`), which
+  downloads the entire source archive from `codeload.github.com`.
+* **git checkout**: `QProcess` running `git fetch --quiet`. A subprocess is not
+  a network manager either.
+
+The only two `urllib.request.urlopen` calls in all 68,940 lines are those two,
+and both are in the update path. So the one item the docstring names second is
+the one item its "complete answer" does not cover.
+
+### And the switch does not gate the reaching out
+
+*Auto updates* (`settings.html:3611`, on by default) is read in exactly two
+places in `browser.py`: `22548`, inside `_count_ahead`, choosing between pulling
+quietly and raising a toast; and `22846`, for the libraries. **`_check_updates`
+at `22464` does not read it**, and `QTimer.singleShot(3000, self._check_updates)`
+at `22045` is unconditional. So with *Auto updates* switched **off**, three
+seconds after every launch the browser still either runs `git fetch` or asks
+github.com what the newest commit is.
+
+The hint text is what makes this a defect rather than a quibble — *"Keep the
+browser and its web engine up to date on their own. New versions are fetched
+and applied in the background"* describes the **applying**, so someone who
+switches it off to stop the fetching has done nothing of the kind.
+
+Also, on the stranded branch: `22529` sets `_stranded` and shows its toast with
+**no** `autoUpdate` check, while the fast-forward branch seven lines below it at
+`22548` has one. Same inconsistency as the gate in W-S03 — two sibling branches,
+one of them remembering the setting.
+
+### How it was found
+
+Not by a sweep for it. It fell out of W-S03: mac said my suggested gate had to
+cover a packaged build, which sent me to read the no-`.git` path, which is where
+the `urlopen` is. The two sweeps mac asked me to repeat were "a comment stating
+a behaviour with code doing something else" and "a control shown that cannot
+work" — this is one of each, in the same feature, and I found them by following
+somebody else's correction rather than by running either sweep.
+
+---
+
 ## Suite status
 
 **The run after the port to linux `055eb67`, 2026-11-02: 113 runs, 106 green,
@@ -1380,8 +1458,8 @@ the runner was fixed — see *The runner called a python this box does not have*
 | `test_addressbar` | 1 occurrence, not looped | exit 139, QtWebEngine teardown | upstream, being chased with gdb |
 | `test_offpalette` | 2/2 | stale `PENDING_AT` entry; `9acba95` moved `PAGE_TOOLS.visited` off `#b48ead` and the reason explaining the old literal stayed | **red on linux's own tree too** |
 | `tests/test_masterwizard` | deterministic | `check("nine pages", total == 9)` → **14**. The wizard grew in `9acba95` and its guard did not. `en` now says "A few quick steps", `de` "Ein paar kurze Schritte" | byte-identical upstream, so red there |
-| `tests/test_masterlock` | 2/2 | asserts `br._toast is None`, a toast is up | byte-identical upstream |
-| `tests/test_private` | 2/2 | same `_toast` shape | byte-identical upstream |
+| `tests/test_masterlock` | 2/2 then **A/B proved** | **W-S03**: the update toast, because HEAD was not an ancestor of `@{u}` — the port commits were local at 09:27 | upstream, shared `browser.py` |
+| `tests/test_private` | 2/2 then **A/B proved** | same cause, one check instead of two | upstream, shared `browser.py` |
 | `test_screenshare` | 2/2 | `getDisplayMedia` has no screen under `offscreen`; `/dev/dri/renderD128: Permission denied` | pre-dates all of this |
 | `test_perf2` | **1 red in 5 on a quiet box** | scroll position after a soft reload; see below | upstream |
 
@@ -1391,6 +1469,23 @@ wizard count, the two string rows, the `PENDING_AT` entry — plus the
 exactly the window in which neither box could complete a full suite, because both
 runners called a `python` that does not exist here. They are not four unrelated
 lapses; they are the symptom, and the runner was the cause.
+
+**The toast pair is a fifth, and it is not staleness at all — see W-S03.** It
+was labelled *"timing or environment on my box"* because it was green on
+linux's byte-identical tree, and that label was wrong in both halves. The pair
+is **44/44 green** here across three conditions — standalone, four at once
+under load, and with `cwd=tests/` as `runall.sh` actually invokes it — and goes
+red the moment HEAD stops being an ancestor of `@{u}`:
+
+    A  is-ancestor exit=0  ahead=0   masterlock 110 checks, 0 failed
+                                     private    132 checks, 0 failed
+    B  is-ancestor exit=1  ahead=1   masterlock 110 checks, 2 failed
+                                     private    132 checks, 1 failed
+
+One `--allow-empty` commit is the whole independent variable, and B's failure
+line is byte-identical to the one in the 09:27 log. It was green on linux's box
+because their checkout was in sync, not because of their box. **The variable
+neither of us had varied.**
 
 ### `test_perf2` — bounded, and the browser is not convicted
 
