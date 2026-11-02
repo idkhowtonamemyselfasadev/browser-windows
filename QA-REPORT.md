@@ -1487,9 +1487,25 @@ Swept mechanically — every `timeout.connect` target and every
 constructs (locale and formatter construction, regex compile, `setStyleSheet`
 re-parse, font metrics, full teardown, subprocess, file read, pixmap decode):
 
-    64 distinct repeating-timer / singleShot callbacks
-     8 contain at least one costly construct
+    42 REPEATING callbacks (timeout.connect, or a singleShot that re-arms)
+     4 contain a costly construct
      1 is the defect shape
+    25 one-shot singleShot targets, listed separately -- NOT the shape
+
+**Corrected, 2026-11-02, after browser-mac read the output.** The first run of
+this sweep reported *"64 callbacks, 8 with a costly construct"*. That figure
+conflated repeating timers with **one-shot `singleShot`s that fire once per
+launch** — `_check_updates`, `backup_bookmarks`, `run_scheduled_tabs` and
+`forget` are all once-and-done. The sweep's own docstring said it counted *"a
+singleShot whose callback **re-arms itself**"*; the code computed that flag and
+then only **printed** it, never filtering on it.
+
+So four of the eight were written up here as near-misses with the wrong reason
+given — "minutes-to-hours timers" when the truth is they do not repeat at all.
+Right verdict, wrong reason, **in the tool written to hunt exactly that
+defect**, and shipped to two other editions before anyone looked at its output
+closely. mac's own run inherited the same conflation and reported "8 of 65".
+Both corrected.
 
 **The one:** `TaskBar._show_time`, five lines, armed by a 20-second `QTimer` at
 `browser.py:20912`.
@@ -1514,9 +1530,26 @@ measurement: 3 ticks a minute against the page's 60.
 
 **Why it is Low.** 3 ticks a minute, not 60, and only while the taskbar look is
 switched on — the timer starts in `showEvent` and stops in `hideEvent`, which
-is correct and is why this is not worse. The fix is the same two lines as the
-page's: hold one `QLocale`, and guard the write on the string having changed,
-which skips `adjustSize` and `_relayout` with it.
+is correct and is why this is not worse. browser-mac confirms the same bounded
+lifecycle in its copy.
+
+**The fix, with the weight where mac puts it rather than where this section
+first put it.** `QLocale()` is the headline and `_relayout` is the cost. mac
+counted what its `_relayout` actually does: three `sizeHint()` calls, the whole
+pin-fit arithmetic, a `move`/`show` on **every** pin button, and a closing
+`self.update()` — a full repaint of the bar. So guarding `setText` on the
+string having changed is the half that pays, because it skips `adjustSize`,
+`_relayout` **and** the repaint together; holding one `QLocale` is the cheaper
+half. Same two lines either way, but the order of importance is the reverse of
+what was written here first.
+
+**It is one bug in three copies.** `browser.py` is hand-ported per edition, so
+unlike the shared HTML this needs the same fix three times. mac confirmed
+`TaskBar._show_time` verbatim — same 20-second tick, same fresh `QLocale()`,
+same unconditional `setText` + `adjustSize` + `_relayout`. Android is **N/A and
+cleanly so**: no clock or taskbar widget exists in that tree, and its shipped
+page JS has zero hits for `Intl.*`, `toLocaleString`, `new RegExp` or
+`setInterval` — nothing there to rebuild a locale for.
 
 ### The seven that look like it and are not
 
@@ -1525,11 +1558,24 @@ Reported because a sweep that only lists its hits cannot be checked:
 * **`_caption_tick`** spawns a recorder subprocess every 4 seconds — but the
   subprocess *is* the feature, and its input is four fresh seconds of audio
   every time. Expensive, repeating, and **not** redundant.
-* **`_lapse_tick`**, **`run_scheduled_tabs`**, **`backup_bookmarks`** format
-  dates and serialise JSON on **minutes-to-hours** timers.
-* **`_drop_private_profile`**, **`forget`** tear down, which is their job.
-* **`_check_updates`** runs a subprocess on a timer and is already W-S03/W-B22
-  for other reasons.
+* **`_lapse_tick`** repeats, but at **minutes**, and every tick captures a
+  genuinely new frame. A timelapse with one frame is not a timelapse.
+* **`_drop_private_profile`** re-arms, so it is correctly in the repeating
+  list — but it re-arms off a download *finishing*, which is an event and not
+  a tick, and it is guarded twice.
+* **`run_scheduled_tabs`**, **`backup_bookmarks`**, **`_check_updates`**,
+  **`forget`** are **one-shot** — see the correction above. `backup_bookmarks`
+  additionally early-returns when today's file already exists, which is exactly
+  the guard `_show_time` is missing.
+
+browser-mac adds a rejection worth recording because it looks more like the
+shape than anything that made the list: **`Dock._step`** is the
+highest-frequency timer in that edition, armed at one animation frame. It asks
+the screen for its refresh rate, measures the real elapsed gap instead of
+assuming a fixed one, clamps catch-up to 100 ms so an App Nap cannot snap the
+animation into place, and **stops itself** when the ease settles. If this sweep
+ever grows a frequency column that one tops it and is still correct — which is
+the argument for a frequency column, and against reading one as a ranking.
 
 So: **one instance, in a look-specific widget, at 3 ticks a minute.** A clean
 sweep is a result too, and this one is nearly clean.
