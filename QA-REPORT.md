@@ -613,7 +613,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-B19 | Two injected lines draw in `W.accent` while their dead fallback names a different token: the find-in-page hit marks on the scroll rail (`#f9e2af` = `yellow`) and the accessibility checker's **no alt text** outline (`#f38ba8` = `red`). Both render in the link/focus colour, so neither reads as what it is. The payloads send only `accent`/`bg`/`text`, so the fallback is the only record of the intent | Medium | **OPEN — needs the payload first** |
 | W-S03 | **A suite's verdict depends on whether the developer has pushed.** `_check_updates` (`browser.py:22464`) is on an ungated 3 s `singleShot` and runs `git fetch`, then `_count_behind` runs `git merge-base --is-ancestor HEAD @{u}`: exit 1 sets `_stranded` and raises a toast. HEAD stops being an ancestor the moment there are unpushed commits, so `check("no toast is up at all", ...)` fails. Proved A/B: in sync 110+132 checks 0 failed, one `--allow-empty` commit 2 and 1 failed. **CI checks out the pushed ref, so CI is always green and the dev box is the only place it fails** | Medium | **OPEN — upstream, shared `browser.py`** |
 | W-B22 | The own-requests log promises to write down the update check — `OwnRequests`' docstring calls it "a complete answer", `settings.html:2972` names it to the user — and `createRequest` is the only writer. The update check bypasses it: the only two `urllib.request.urlopen` calls in the file (`869`, `881`) are both in it, plus a `QProcess git fetch`. Separately, *Auto updates* **off** does not stop the startup fetch: `_check_updates` never reads `autoUpdate`. Source-verified, not executed | Medium | **OPEN — upstream; the no-`.git` path is Windows' shipping case** |
-| W-B21 | While `start.html` (the page the browser opens on) is the visible tab, the QtWebEngine **compositor process** grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
+| W-B21 | While `start.html` (the page the browser opens on) is the visible tab, one QtWebEngine child process (**the renderer** — this report first called it the compositor off a thread name; see the section) grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -1208,8 +1208,19 @@ not, so it is read as a leak. Scope stays Linux / `offscreen` / software
 compositing — see *Windows* at the bottom.
 
 **METRIC, because the number is meaningless without it:** the `Pss:` field of
-`/proc/<pid>/smaps_rollup` for **one process** — the compositor — walked via
-`/proc/<pid>/task/<pid>/children`. Not own-process RSS, which reports a
+`/proc/<pid>/smaps_rollup` for **one process**, walked via
+`/proc/<pid>/task/<pid>/children`. **Which process: the largest engine child
+present at t=0**, picked by `max()` over per-pid PSS. This section called it
+"the compositor" throughout and that label is an inference, not a measurement —
+it came from a thread named `Compositor` in that pid's `task/` listing. In
+Chromium a *renderer* runs a compositor thread too, so the label does not
+establish the role. What the recorded evidence does support: of three engine
+children, two had only a `QtWebEngineProc` thread and sat flat at ~20 and ~16 MB
+(the zygotes), and one had `Chrome_ChildIOT`, `Compositor` and three
+`ThreadPool*` threads. With no GPU process under `offscreen` software
+compositing, that one working child is **the renderer** — which makes it the
+same process browser-linux attributes their leak to, under a different name.
+Read every "compositor" below as "that one process". Not own-process RSS, which reports a
 fraction; not summed RSS, which double-counts shared mapped libraries. A
 per-process PSS figure is sound, but it is **not** "what the browser costs the
 machine", and nothing here should be read as that.
@@ -1317,7 +1328,17 @@ measurement environment rather than of the browser. Against that floor:
   and +4.35 on `start.html`. Linux's reading sharpens why that comparison is
   fair — the minimal page was mechanically the same driver, so this is one
   frame rate costing four times as much on a bigger DOM, not frames versus no
-  frames. `tick()` rewrites `clock` and `date` `textContent` every second, but
+  frames.
+
+  **It is a heap leak, not retained raster — browser-linux measured the
+  breakdown, 2026-11-02.** The growing process's own mapping classes: `[heap]`
+  **+30.8 MB, which is all of it**, memfd/shm flat (shm slightly *fell*),
+  mapping count +4. Retained frame or transfer buffers would show up as memfd
+  or `/dev/shm` with a climbing mapping count, and they do not. So an ordinary
+  C++ `malloc`/`brk` leak. **"Scales with paint cost, so it fits retained
+  raster" is withdrawn** — it was a fair reading of the symptom and wrong about
+  the bytes. The four-times-on-a-bigger-DOM observation still stands as a
+  measurement; it just no longer implies the mechanism I hung on it. `tick()` rewrites `clock` and `date` `textContent` every second, but
   with seconds off the string only changes once a minute, so **59 of 60 writes
   are identical to what is already rendered.** Whether an identical write
   actually costs the memory is being measured by linux.
