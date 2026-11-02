@@ -1198,6 +1198,62 @@ call `js()` nowhere and have some other cause.
 
 ## Suite status
 
+**The run after the port to linux `055eb67`, 2026-11-02: 113 runs, 106 green,
+7 red, every one placed.** The first full suite this edition has completed since
+the runner was fixed — see *The runner called a python this box does not have*.
+
+| Suite | Reproduced | Cause | Whose |
+|---|---|---|---|
+| `test_addressbar` | 1 occurrence, not looped | exit 139, QtWebEngine teardown | upstream, being chased with gdb |
+| `test_offpalette` | 2/2 | stale `PENDING_AT` entry; `9acba95` moved `PAGE_TOOLS.visited` off `#b48ead` and the reason explaining the old literal stayed | **red on linux's own tree too** |
+| `tests/test_masterwizard` | deterministic | `check("nine pages", total == 9)` → **14**. The wizard grew in `9acba95` and its guard did not. `en` now says "A few quick steps", `de` "Ein paar kurze Schritte" | byte-identical upstream, so red there |
+| `tests/test_masterlock` | 2/2 | asserts `br._toast is None`, a toast is up | byte-identical upstream |
+| `tests/test_private` | 2/2 | same `_toast` shape | byte-identical upstream |
+| `test_screenshare` | 2/2 | `getDisplayMedia` has no screen under `offscreen`; `/dev/dri/renderD128: Permission denied` | pre-dates all of this |
+| `test_perf2` | **1 red in 5 on a quiet box** | scroll position after a soft reload; see below | upstream |
+
+**Three of the seven are deterministic staleness in files upstream ships** — the
+wizard count, the two string rows, the `PENDING_AT` entry — plus the
+`ProcessLookupError` grep linux fixed this morning. All of them accumulated during
+exactly the window in which neither box could complete a full suite, because both
+runners called a `python` that does not exist here. They are not four unrelated
+lapses; they are the symptom, and the runner was the cause.
+
+### `test_perf2` — bounded, and the browser is not convicted
+
+`FAIL ...and the page is near where it was  <0>`, 1 run in 5 with nothing else on
+the box. Unlike the verdict/evidence disagreement its own comment documents, this
+red is **self-consistent**: 0 really is below 200, so the check is right to fail.
+
+Driven in isolation, twice, and it does **not** reproduce:
+
+    6 rounds, plain page            restored at 0.3 s, 6/6
+    8 rounds, the suite's exact page (both <img>, the <video>,
+      /pic.png 404ing as it does there)   restored at 0.3 s, 8/8
+      document height stable 4016 -> 4016 across every round
+
+So 14 of 14, and the page is not the variable. Whatever makes it fail lives in the
+260 lines of accumulated state before it — the suite has frozen an idle tab,
+wrapped the page's own frame callback and set a video cap by then. **`soft_reload`
+losing a reader's place would be a consumer-facing defect, and this evidence does
+not support that claim.** Bounded here on purpose: it is upstream's suite.
+
+The call site cannot tell its own failure modes apart, which is worth fixing
+whoever owns it:
+
+    H.wait_for(lambda: (js("window.scrollY|0", MAIN) or 0) >= 200, 8000)
+    scrolled = js("window.scrollY|0", MAIN)
+    check("...and the page is near where it was", (scrolled or 0) >= 200, scrolled)
+
+`wait_for` returns a bool and it is **discarded**, so a timeout is
+indistinguishable from success at that line; then the page is asked *again*, so
+verdict and evidence come from different instants. That is the exact pattern the
+comment two lines above says was removed because "the verdict and the number
+printed beside it came from two different moments and were free to disagree". The
+comment states the fix; the code at this call site never got it.
+
+---
+
 **The baseline run, 2026-10-29 evening: 99 suites, 4 red, every one explained.**
 
 | Suite | Reproduced | Cause | Whose |
