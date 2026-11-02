@@ -1196,10 +1196,19 @@ flaky suites call `js()`. But what is *proven* is that the mechanism exists and
 fires, not that it caused each specific red: `test_libs` and `test_permreload`
 call `js()` nowhere and have some other cause.
 
-## W-B21 — the page the browser opens on retains 4 MB a minute
+## W-B21 — the compositor grows while the default page is shown
 
-**Severity: High.** Unbounded, in the default state, on a browser whose brief
-for this phase is "doesn't eat ram".
+**Severity: open — High if it is a leak, Low if it is a bounded cache.** The
+growth is measured and reproducible. Whether it has a ceiling is NOT yet
+established, and the two readings want opposite responses, so the severity
+stays unresolved rather than being guessed at the high end.
+
+**METRIC, because the number is meaningless without it:** the `Pss:` field of
+`/proc/<pid>/smaps_rollup` for **one process** — the compositor — walked via
+`/proc/<pid>/task/<pid>/children`. Not own-process RSS, which reports a
+fraction; not summed RSS, which double-counts shared mapped libraries. A
+per-process PSS figure is sound, but it is **not** "what the browser costs the
+machine", and nothing here should be read as that.
 
 `start.html` is what the browser opens on. While it is the visible tab, the
 QtWebEngine **compositor process** grows at **+4.35 MB/min**, monotonically,
@@ -1212,9 +1221,16 @@ releases none of it**:
     released after leaving     -2.7 MB   (nothing came back)
 
 The post-navigation slope matches the from-boot `about:blank` control, so the
-leak is tied to the page being shown, and 45 MB of it is held for the life of
-the process. Leave the browser on its own start page for an hour and that is
-~250 MB it will not give back.
+growth is tied to the page being shown, and 45 MB of it was still held twelve
+minutes later.
+
+**An earlier draft of this section said "~250 MB an hour it will not give
+back". That is an extrapolation from a 22-minute window and it is withdrawn as
+written.** A steady linear slope looks identical for an unbounded leak and for
+a cache still filling, and QtWebEngine has several caches that grow on their
+own and do not release on navigate — the HTTP cache, GPU transfer buffers, the
+code cache. Twenty-two minutes cannot tell those apart. browser-linux asked the
+question; a 70-minute run is the answer and is pending.
 
 ### Four arms, and what each one rules out
 
@@ -1231,8 +1247,18 @@ measurement environment rather than of the browser. Against that floor:
 * **a bare 1-second clock: +0.87 MB/min excess, 10 of 10 samples up.** Its own
   small finding: ~14.5 KB retained per tick for writing `textContent` on two
   nodes. It explains **21%** of the start page.
-* **3.26 MB/min is start-page work not yet identified.** Named as unknown
-  rather than guessed at.
+* **3.26 MB/min is unattributed, and it is NOT start-page work.** Patching
+  `requestAnimationFrame` and `setTimeout` on the live start page and watching
+  for a minute gives **0 rAF registrations and 0 setTimeout** — no loop
+  re-registers, so nothing on the page is producing frames. An earlier draft
+  called this "start-page work not yet identified", which implied a running
+  thing waiting to be found; there isn't one.
+
+  What the numbers do say: the SAME one-second tick produced +1.10 MB/min on a
+  minimal page and +4.35 on `start.html`. Same work, four times the growth —
+  so it scales with how much there is to raster, not with what the page does.
+  That fits retained raster or transfer buffers. It does not fit a line of
+  JavaScript, which is why the bisect of this page was dropped rather than run.
 
 ### What this measurement got wrong first, four times
 
@@ -1258,8 +1284,12 @@ climbs to 202.2. Three points could not have told which.
 ### Not established, and not to be claimed
 
 * **Why** the compositor retains it. The *what* is measured; the mechanism is not.
-* **Which** part of the start page accounts for the other 79%. Bisecting a
-  3,000-line shared page is the next step and has not been done.
+* **Whether there is anything in the page to find at all.** A bisect of the
+  3,118-line shared page was approved and then dropped: with no loop running,
+  it would have localised the growth to whichever chunk happened to raster
+  hardest and produced a confident, specific, wrong answer. The hour was saved
+  by a question from browser-linux and a sixty-second probe, not by rereading
+  the reasoning — which is this section's fifth instance of exactly that.
 * **Windows: `UNVERIFIED — never executed`.** All of this is Linux, `offscreen`,
   software compositing, no `/dev/dri` access. A real GPU path may not retain
   frames in PSS at all, and the Windows compositor is not this code.
