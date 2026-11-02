@@ -1436,16 +1436,66 @@ direction linux cannot test: `minimal-clock.html` calls **both**
 per tick — and reads +1.10 against the +0.42 floor on a **5-element** page. So
 formatter calls cost, and they cost with no DOM anywhere near them.
 
-**The open cross-box question, stated because it is not settled.** Linux's
-budget for this work is 1.52 + 1.67 = 3.19 MB/min. The excess here is 0.68 for
-arguably *more* formatter work — **4.7× apart, in the same direction**. The
-arms on this box never split `[heap]` from `[anon:v8]`, so that gap could be
-the machine, the ICU build under this Qt, or an attribution error here. If it
-is the last of those, then the floor's agreement with 0.48 is luck rather than
-corroboration, and the one number of mine that survived the day goes with it.
-`.../scratchpad/mem/intl.py` is written to answer it: a 1 Hz timer with an
-empty body against the same timer calling `toLocaleTimeString` and not
-writing, both split by allocator.
+### The cross-box question, measured — and the answer retracts my own number
+
+Linux's budget for this work is 1.52 (`[anon:v8]`, the writes) + 1.67
+(`[heap]`, the formatters) = 3.19 MB/min. The excess measured here was 0.68 for
+arguably *more* formatter work, 4.7× apart, which could have been the machine,
+the ICU build under this Qt, or an attribution error on this side. Two 20-minute
+arms, 1203 ticks each against ~1200 expected so neither went void:
+
+    EMPTY  1 Hz timer, tick counter only              all +0.27 MB/min
+    CALL   same timer + toLocaleTimeString, no write  all +0.51 MB/min
+
+Read as a 0.24 MB/min formatter cost at first. **It is not. Every bucket:**
+
+    bucket                     EMPTY     CALL      diff
+    memfd/shm                 -0.243   -0.006   +0.237   <- the whole difference
+    [anon:partition_alloc]    +0.316   +0.316   +0.000
+    [anon:v8]                 +0.130   +0.136   +0.006
+    [anon unnamed]            +0.056   +0.057   +0.001
+    [heap]                    +0.007   +0.013   +0.006
+    file-backed               +0.004   -0.004   -0.008
+
+    difference with memfd/shm excluded:            +0.005 MB/min
+
+`memfd/shm` is a **release**, not an allocation. EMPTY ran **first**, in a
+freshly started renderer, and gave back 4.87 MB of page-load shared memory over
+its twenty minutes; CALL ran second in the **same pid** with that release
+already done. Take it out and the two arms differ by **0.005 MB/min**, and
+`partition_alloc` — the dominant term in both — matches to three decimals.
+
+**So on this box one `toLocaleTimeString` per second has no measurable cost at
+this sensitivity, and the +0.21 reported an hour ago was an arm-ordering
+artifact.** Same error class as the floor refit earlier in this section — a
+startup transient read as part of a trend — except whole-arm rather than one
+sample, which is why dropping `t=0` could not have caught it and only the
+per-bucket breakdown did.
+
+**Two things retracted with it:**
+
+* *"the formatter costs ~8× less here than on linux's box"* — withdrawn. The
+  right statement is **not detectable at this sensitivity**, which is a
+  different claim and a weaker one.
+* *the self-coherence check* — EMPTY 0.28 / CALL 0.49 / minimal-clock 1.10,
+  with two formatters at 0.21 leaving ~0.40 for the two writes. It was built on
+  the 0.21 being real, so it goes too. It had been the first number here
+  corroborated by anything other than its own slope, and it was corroborating a
+  release transient.
+
+**What this does NOT touch.** Linux's real-page A/B — shipped +4.42 MB/min
+against +0.146 guarded, 96.7%, 376 checks green — is a measured before/after on
+the page that actually ships, and does not depend on where this box puts bytes.
+Nor is this evidence against the formatter mechanism: a single formatter on a
+5-element page may simply be below this harness's floor, where the shipped page
+runs **two** per tick alongside the writes and a real DOM. The honest summary is
+that this edition's minimal-page arms **cannot resolve** the mechanism, not that
+they contradict it.
+
+**The control nobody has run:** the arms in reverse order, CALL first. The
+bucket-level equality already answers it — no allocating bucket differs, so the
+formatter's cost is not hiding in one — but a reversed run would confirm the
+ordering artifact directly and is the obvious next step if anyone wants it.
 
 The fix is now both halves — cache the formatter pair, guard the write — and
 it is linux's to land in the shared page.
