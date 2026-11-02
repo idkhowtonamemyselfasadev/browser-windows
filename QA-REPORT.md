@@ -1540,10 +1540,11 @@ Swept mechanically — every `timeout.connect` target and every
 constructs (locale and formatter construction, regex compile, `setStyleSheet`
 re-parse, font metrics, full teardown, subprocess, file read, pixmap decode):
 
-    42 REPEATING callbacks (timeout.connect, or a singleShot that re-arms)
+    40 REPEATING callbacks (timeout.connect, or a singleShot that re-arms)
      4 contain a costly construct
      1 is the defect shape
     25 one-shot singleShot targets, listed separately -- NOT the shape
+     7 arming sites UNRESOLVED -- lambda / closure / attribute targets
 
 **Corrected, 2026-11-02, after browser-mac read the output.** The first run of
 this sweep reported *"64 callbacks, 8 with a costly construct"*. That figure
@@ -1559,6 +1560,25 @@ Right verdict, wrong reason, **in the tool written to hunt exactly that
 defect**, and shipped to two other editions before anyone looked at its output
 closely. mac's own run inherited the same conflation and reported "8 of 65".
 Both corrected.
+
+**Then corrected again, from 42 to 40.** Writing a test to pin the tool's
+*blind* spots — assert that a lambda-armed timer is NOT seen, so the limitation
+fails loudly if someone widens the regex — the test failed, because the tool
+*did* see it. `timeout.connect(lambda: self.foo())` matches the callback regex
+and yields the literal name **`lambda`**. So one of the 42 was the string
+`lambda`, standing in for **six** lambda-armed sites, counted as one callback
+that does not exist.
+
+Unresolvable names are now counted as **unresolved arming sites** and printed
+on their own line — 7 here. That turns the tool's reach from a paragraph
+nobody re-reads into a number that moves when the regex changes.
+
+**This count has now been wrong three times: 64, then 42, then 40.** Each
+correction came from outside — twice from browser-mac reading the output, once
+from writing a test aimed at the tool's own blind spot. None came from
+re-reading the code, which is the whole pattern of today in one artifact. The
+four hits and the single defect have survived every revision unchanged, which
+is the only reason the conclusion was ever safe to send.
 
 **The one:** `TaskBar._show_time`, five lines, armed by a 20-second `QTimer` at
 `browser.py:20912`.

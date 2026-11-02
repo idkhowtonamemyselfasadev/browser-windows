@@ -25,7 +25,7 @@ call sites". Neither is wrong and they are not comparable. If a
 repeating-count is ever put in a report next to another edition's, the
 DEFINITION has to travel with the number.
 
-This edition has 17 setSingleShot(True) sites, so its 42 is an
+This edition has 17 setSingleShot(True) sites, so its 40 is an
 over-count of genuinely repeating callbacks by up to that many. It does
 not touch the four hits: all four were checked by hand and none of
 their timers is marked single-shot -- _show_time is setInterval(20000)
@@ -108,26 +108,44 @@ def sweep(src):
                     "singleShot" in body)
         return None
 
-    repeating, oneshot = [], []
+    # A name that does not resolve to a def in this file is NOT a callback:
+    # `timeout.connect(lambda: self.foo())` matches the regex and yields the
+    # literal "lambda". Counting those inflated the headline -- browser.py
+    # reported 42 repeating callbacks, one of which was "lambda" standing in
+    # for six lambda-armed sites. They are now counted as UNRESOLVED arming
+    # sites, which is the tool's reach expressed as a number instead of a
+    # paragraph: a count that moves when someone widens the regex.
+    unresolved = 0
+    repeating, oneshot, named = [], [], 0
     for name, sites in sorted(ticking.items()):
         got = scan(name)
-        if got and got[2]:
+        if got is None:
+            unresolved += len(sites)
+            continue
+        named += 1
+        if got[2]:
             repeating.append((name,) + got + (sites,))
     for name, sites in sorted(shot.items()):
         got = scan(name)
-        if not got or not got[2]:
+        if got is None:
+            unresolved += len(sites)
+            continue
+        if not got[2]:
             continue
         # re-arms -> genuinely repeating; otherwise once per launch
         (repeating if got[3] else oneshot).append((name,) + got + (sites,))
-    return repeating, oneshot, len(ticking), len(shot)
+    n_shot = sum(1 for n in shot if scan(n) is not None)
+    return repeating, oneshot, named, n_shot, unresolved
 
 
 def report(src, label):
-    repeating, oneshot, n_tick, n_shot = sweep(src)
+    repeating, oneshot, n_tick, n_shot, unresolved = sweep(src)
     print("%d REPEATING callbacks (timeout.connect, or a singleShot that re-arms)"
           % n_tick)
-    print("%d one-shot singleShot targets, NOT the shape -- listed separately\n"
+    print("%d one-shot singleShot targets, NOT the shape -- listed separately"
           % n_shot)
+    print("%d arming sites UNRESOLVED -- lambda / closure / attribute targets "
+          "this tool cannot name\n" % unresolved)
     print("REPEATING, with a costly construct -- these are the candidates:")
     for name, lo, span, found, rearms, sites in sorted(repeating,
                                                        key=lambda h: -len(h[3])):
@@ -170,11 +188,11 @@ def selftest():
         ok = ok and bool(cond)
 
     # 1. planted positive: the shape, in a repeating callback
-    rep, shot, _, _ = sweep(CASE % "self.x = QLocale().toString(QTime.currentTime())")
+    rep, shot, _, _, _ = sweep(CASE % "self.x = QLocale().toString(QTime.currentTime())")
     check("planted shape in a repeating callback is FOUND",
           any(n == "tick" for n, *_ in rep))
     # 2. removed negative: same handler, nothing costly in it
-    rep2, _, _, _ = sweep(CASE % "self.x = 1")
+    rep2, _, _, _, _ = sweep(CASE % "self.x = 1")
     check("same handler with the construct removed goes SILENT",
           not any(n == "tick" for n, *_ in rep2))
     # 3. THE REGRESSION TEST: a one-shot with a costly construct must not
@@ -183,13 +201,38 @@ def selftest():
           not any(n == "once" for n, *_ in rep))
     check("one-shot singleShot IS in the one-shot list",
           any(n == "once" for n, *_ in shot))
-    # 4. a one-shot target that re-arms itself IS repeating
+    # 4. THE BLIND SPOTS, asserted rather than only described. A lambda and
+    #    a local closure are invisible here, and that is a known limit, not a
+    #    pass -- so it is pinned. If someone widens the regex, these FAIL and
+    #    tell them the reach changed, instead of the reach changing quietly.
+    #    browser-mac's lesson, generalised: a mutation has to aim at the part
+    #    that decides WHETHER TO LOOK, not only the part that looks.
+    blind = '''
+class T:
+    def __init__(self):
+        t = QTimer(self)
+        t.timeout.connect(lambda: self.hidden())
+        def later():
+            self.x = QLocale().toString(QTime.currentTime())
+        QTimer.singleShot(500, later)
+    def hidden(self):
+        self.x = QLocale().toString(QTime.currentTime())
+'''
+    brep, bshot, n_tick, n_shot, unres = sweep(blind)
+    check("KNOWN BLIND: a lambda-armed callback is not named as one",
+          not any(n == "hidden" for n, *_ in brep) and n_tick == 0)
+    check("KNOWN BLIND: the lambda site is COUNTED as unresolved",
+          unres >= 1)
+    check('no callback is ever named "lambda"',
+          not any(n == "lambda" for n, *_ in brep + bshot))
+
+    # 5. a one-shot target that re-arms itself IS repeating
     rearm = CASE.replace("    def once(self):\n"
                          "        self.x = QLocale().toString(QTime.currentTime())",
                          "    def once(self):\n"
                          "        self.x = QLocale().toString(QTime.currentTime())\n"
                          "        QTimer.singleShot(1000, self.once)")
-    rep3, shot3, _, _ = sweep(rearm % "self.x = 1")
+    rep3, shot3, _, _, _ = sweep(rearm % "self.x = 1")
     check("a singleShot callback that re-arms counts as repeating",
           any(n == "once" for n, *_ in rep3) and not any(n == "once" for n, *_ in shot3))
     print("\n%s" % ("selftest passed" if ok else "SELFTEST FAILED"))
