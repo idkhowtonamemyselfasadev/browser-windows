@@ -598,7 +598,8 @@ a forgiving fallback returning a plausible wrong value.
 | W-B06 | `#11111b` on `mictest.html:25`, the mic meter track, is not in `THEME_SOURCE`, so it stays near-black on all 116 themes | Low | **OPEN — upstream** |
 | W-B08 | `download_dir(create=True)` creates the folder the user *chose* and returns the **default** without creating it. On a machine with no `~/Downloads`, it hands back a path that does not exist — and the docstring's whole point is that `create=True` conjures the folder up | Medium | **fixed** |
 | W-B09 | `pretty_url()`'s `xn--` branch is dead — `QUrl.host()` already decodes, so the test is never true — and its comment credits decoding with the homograph protection when decoding is the hazard. ~~Not a security hole here~~ — **see W-B10, I cleared this on a grep and the grep lied** | Low | **OPEN — upstream** |
-| W-B07 | Settings → Performance offers *"Sleep background tabs before the machine swaps"* with the hint *"Reads the kernel's own memory-pressure figure (PSI)"*. Windows has no PSI and no `/proc`, so that half can never fire — the switch goes on and the timer runs for nothing | Medium | **OPEN — upstream** |
+| W-B07 | Settings → Performance offers *"Sleep background tabs before the machine swaps"* with the hint *"Reads the kernel's own memory-pressure figure (PSI)"*. Windows has no PSI and no `/proc`, so that half can never fire — the switch goes on and the timer runs for nothing. **Not a product question: this edition already does the right thing four times over** — see below | Medium | **OPEN — upstream, one string** |
+| W-S04 | `write_desktop_entry` (`browser.py:26385`, 44 lines) writes a `.desktop` file so a site starts from the application menu. **Nothing calls it** — no Bridge slot, no menu action, no page; the only caller in the repo is `test_tabwork2.py:472`. `open_as_app` is reachable and opens an app-mode window, but the half that would make it persist is never reached, so a passing suite is the only thing that makes the feature look delivered. On Windows it would also have written to `~/.local/share/applications` and **returned the path**, i.e. reported success | Low | **OPEN — upstream** |
 | W-B10 | **Neither of the address bar's two security marks has ever been shown.** `update_bar_marks` did `QUrl(str(url))`; `str()` of a QUrl is its Python repr, which parses to an empty everything. Every real navigation arrives as a QUrl, so host was always `""` — the look-alike badge *and* the plain-http **Not secure** badge were hidden on every page load. Every http page looked exactly like an https one | High | **fixed** |
 | W-B11 | The seventh tool dispatcher never tinted. Six call `tint_js`; `dev_tool` did not, and `DEV_TOOLS.update(DEV_TOOLS_PAGE)` makes it the **only** route to the five overlays that were normalised to tokens so they could be tinted — the ruler readout, hidden-field notes, perf box, key viewer, outline tints. Mocha over a latte window | Medium | **fixed** |
 | W-B12 | Three more tool tables paint and are never tinted — `PAGE_TOOLS` (back-to-top button, edit badge, visited-link recolour), `MEDIA_TOOLS` (volume OSD), `READER_TOOLS` (hint markers). Their literals are not tokens either, so tinting them is a no-op until someone decides which are the browser speaking | Low | **OPEN — needs a product call** |
@@ -1389,6 +1390,57 @@ climbs to 202.2. Three points could not have told which.
 
 `start.html` is a shared page under `browser-pages`, so the fix is not this
 edition's to make.
+
+---
+
+## W-B07 is not a product call — the fix has four precedents in the same file
+
+Recorded because the row said *"needs a product call"*, and the two sweeps
+browser-mac asked me to repeat turned that out to be wrong.
+
+**The pattern already exists and this edition already uses it.** Desktop
+notifications run through `notify-send`, which cannot exist on Windows.
+`notify_desktop` (`browser.py:33181`) degrades honestly — `shutil.which`, then
+`return False` — and the Windows `UI_STRINGS` override the hint outright:
+
+    "desktopNotifyHint": "Not on Windows — the line in the browser is the
+                          whole of it."
+
+against `settings.html:2442`'s static *"Through notify-send when it is
+installed."* Four hints in this edition's strings name Windows explicitly, so
+this is a practice, not a one-off. `mprisMissing` does the same job for the
+media keys: *"The media keys are a Linux desktop protocol (MPRIS over D-Bus);
+this edition does not answer them."*
+
+So W-B07's `perfPressureHint` — *"Reads the kernel's own memory-pressure figure
+(PSI), not a free-memory guess."* — is the same situation with no override
+written. It is an inconsistency with an established pattern, and the fix is one
+string. Nothing has to be decided first.
+
+### What the two sweeps actually returned
+
+Both were owed and both ran. One finding, two nulls, and the nulls are reported
+because a sweep whose result is only mentioned when it finds something is not a
+sweep:
+
+* **comment references whose referent moved** — mechanised over every comment
+  naming an identifier: **10 candidates, 0 real.** Domain names, a package name,
+  `test_contrast.py` (which exists, at the repo root rather than under `tests/`),
+  config-key strings, and an internal nickname for the `--background` flag.
+  **The sweep's reach, stated:** it only proves a name *resolves*. It cannot
+  catch W-B22, where every name in the docstring existed and the claim was
+  still false. This is a lower bound on the sweep, not the sweep.
+* **numeric claims in comments** — the KDF comments check out exactly:
+  `128 · 2¹⁶ · 8` is 64 MiB and `KDF_MAXMEM` is 192 MB, above it. 387 functions
+  make a falsifiable absolute in their docstring; the *"nothing leaves the
+  machine"* cluster reads correct where I checked it.
+
+**A grep of mine that lied, since it is the same class as two others today:**
+`dbus|DBus|MPRIS` over `browser.py` returns 0, and for a few minutes I believed
+there was no D-Bus code in the file. It is spelled **`D-Bus`**, with a hyphen.
+A pattern that reads as absence when it is only a different spelling — the
+same shape as reading `grep -o` match counts as process counts, and as reading a
+thread name as a process role.
 
 ---
 
