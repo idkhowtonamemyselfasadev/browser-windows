@@ -1421,12 +1421,42 @@ Two readings, and they call for different fixes:
    exactly what was measured, and "no page edit can reach it" is a larger claim
    that does not follow from those three arms.
 
-**The arm that separates them has not been run by anyone:** a big DOM with no
-writes — `start.html` with the clock disabled. Linux varied writes at constant
-DOM; the four arms here varied DOM and writes together, so neither isolates
-DOM. If leak B tracks DOM size, reducing what the start page builds **is** a
-page-side mitigation and reading 2 as settled would have closed off the cheaper
-fix. It is one arm, and it is queued alongside the per-kind split.
+**Correction to this section's own framing, same day.** It called
+`start.html` "a big DOM". It is not. The file is 112 KB and **70 static tags**;
+everything else is inline `<script>` and `<style>`, 2.7 KB of markup once those
+are stripped. With 30 `createElement`/`innerHTML` sites the live DOM comes to
+browser-linux's measured **158 tags** — and linux's synthetic rig uses **720
+elements**, 4.5× *more* than the real page it stands for. So "big DOM" was read
+off a file size, which is the same mistake as reading a role off a thread name.
+
+That does not retire the question, it sharpens it, because the two boxes now
+bracket it from both ends — 5 tags here, 720 there, the real page between:
+
+    N=   5 elements (minimal-static)   leak B  0.50 MB/min   measured, this box
+    N= 720 elements (linux's rig)      leak B  1.65 MB/min   measured, linux
+    N= 158 elements (start.html live)  leak B  ~0.75 MB/min  PREDICTED
+
+Fitting those two points linearly gives `0.49 + 0.0016 × elements`, which puts
+the real page's leak B near **0.75**, leaving **~3.65 of the 4.40 — 83% — as
+leak A, the writes**. If that holds, guarding the clock is worth far more on the
+shipped page than the 41% linux measured, because 41% was a ratio taken on a
+rig with 4.5× the DOM diluting it.
+
+**That number is a hypothesis and it is labelled one.** Two points, measured on
+two different machines, with a linear form assumed and nothing to justify the
+form — and the 5-element point is a floor that has not yet been split into
+`[heap]` and `[anon:v8]`, so part of it may not be leak B at all. This is
+exactly the shape of the "~250 MB an hour" extrapolation withdrawn earlier in
+this section: a clean fit across too few points. It is written down so linux's
+real-page A/B can kill it, not so it can be quoted.
+
+**And the decisive measurement is no longer this arm.** Linux is measuring
+`start.html` as shipped against the same page guard-applied, which gives MB/min
+on the page that actually ships instead of a percentage from a page nobody
+opens. Linux's `idle` arm — its 720-element body with no timer at all — is also
+already in flight, so the zero-writes-at-constant-DOM case I called unrun is
+running. What stays useful here is the **cross-box** set, because the floor at
+5 elements is a point linux's rig cannot produce.
 
 ### Not established, and not to be claimed
 
