@@ -614,6 +614,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-B19 | Two injected lines draw in `W.accent` while their dead fallback names a different token: the find-in-page hit marks on the scroll rail (`#f9e2af` = `yellow`) and the accessibility checker's **no alt text** outline (`#f38ba8` = `red`). Both render in the link/focus colour, so neither reads as what it is. The payloads send only `accent`/`bg`/`text`, so the fallback is the only record of the intent | Medium | **OPEN — needs the payload first** |
 | W-S03 | **A suite's verdict depends on whether the developer has pushed.** `_check_updates` (`browser.py:22464`) is on an ungated 3 s `singleShot` and runs `git fetch`, then `_count_behind` runs `git merge-base --is-ancestor HEAD @{u}`: exit 1 sets `_stranded` and raises a toast. HEAD stops being an ancestor the moment there are unpushed commits, so `check("no toast is up at all", ...)` fails. Proved A/B: in sync 110+132 checks 0 failed, one `--allow-empty` commit 2 and 1 failed. **CI checks out the pushed ref, so CI is always green and the dev box is the only place it fails** | Medium | **OPEN — upstream, shared `browser.py`** |
 | W-B22 | The own-requests log promises to write down the update check — `OwnRequests`' docstring calls it "a complete answer", `settings.html:2972` names it to the user — and `createRequest` is the only writer. The update check bypasses it: the only two `urllib.request.urlopen` calls in the file (`869`, `881`) are both in it, plus a `QProcess git fetch`. Separately, *Auto updates* **off** does not stop the startup fetch: `_check_updates` never reads `autoUpdate`. Source-verified, not executed | Medium | **OPEN — upstream; the no-`.git` path is Windows' shipping case** |
+| W-B23 | `TaskBar._show_time` (`browser.py:20930`) is the native twin of the `start.html` clock bug. A 20-second repeating `QTimer` constructs a **fresh `QLocale()` every tick**, formats `QTime.currentTime()` to `ShortFormat` — which is `HH:MM` and changes once a **minute** — then calls `setText`, `adjustSize()` and a full `_relayout()` unconditionally. **Two of every three ticks set a string identical to the one on screen** and relayout the bar for it. Timer lifecycle is correct (`showEvent`/`hideEvent`), so it only runs while the taskbar look is on. **Rate NOT measured — do not quote one** | Low | **OPEN — upstream** |
 | W-B21 | While `start.html` (the page the browser opens on) is the visible tab, one QtWebEngine child process (**the renderer** — this report first called it the compositor off a thread name; see the section) grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
@@ -1470,6 +1471,68 @@ it is linux's to land in the shared page.
 
 `start.html` is a shared page under `browser-pages`, so the fix is not this
 edition's to make.
+
+---
+
+## W-B23 — the native timers, swept for the fleet defect shape
+
+browser-linux generalised the `start.html` finding into a shape worth hunting:
+**an expensive construction fired unconditionally from a repeating timer,
+whether or not its inputs changed.** The nine shared HTML pages are linux's
+sweep and get fixed once in the shared layer. `browser.py`'s own `QTimer`s are
+per-edition, and nobody had looked.
+
+Swept mechanically — every `timeout.connect` target and every
+`QTimer.singleShot` target, cross-referenced against a list of costly
+constructs (locale and formatter construction, regex compile, `setStyleSheet`
+re-parse, font metrics, full teardown, subprocess, file read, pixmap decode):
+
+    64 distinct repeating-timer / singleShot callbacks
+     8 contain at least one costly construct
+     1 is the defect shape
+
+**The one:** `TaskBar._show_time`, five lines, armed by a 20-second `QTimer` at
+`browser.py:20912`.
+
+    self.clock.setText(QLocale().toString(QTime.currentTime(),
+                                          QLocale.FormatType.ShortFormat))
+    self.clock.adjustSize()
+    self._relayout()
+
+`QLocale()` is constructed fresh on every tick — the same per-tick formatter
+construction as `Intl.DateTimeFormat` in the page. `ShortFormat` is `HH:MM`, so
+the string changes **once a minute** while the timer fires **three times a
+minute**: two ticks in three call `setText` with the string already on screen,
+then `adjustSize()` and a full `_relayout()` that resizes three buttons, moves
+the clock and recomputes how many pins fit. The page version at least only
+wrote text; this one re-lays-out a widget.
+
+**What is NOT claimed.** No rate, no MB. This was found by reading and it has
+not been measured, and the lesson of W-B21 is that an unmeasured rate quoted
+once gets quoted again. For scale only, and as arithmetic rather than
+measurement: 3 ticks a minute against the page's 60.
+
+**Why it is Low.** 3 ticks a minute, not 60, and only while the taskbar look is
+switched on — the timer starts in `showEvent` and stops in `hideEvent`, which
+is correct and is why this is not worse. The fix is the same two lines as the
+page's: hold one `QLocale`, and guard the write on the string having changed,
+which skips `adjustSize` and `_relayout` with it.
+
+### The seven that look like it and are not
+
+Reported because a sweep that only lists its hits cannot be checked:
+
+* **`_caption_tick`** spawns a recorder subprocess every 4 seconds — but the
+  subprocess *is* the feature, and its input is four fresh seconds of audio
+  every time. Expensive, repeating, and **not** redundant.
+* **`_lapse_tick`**, **`run_scheduled_tabs`**, **`backup_bookmarks`** format
+  dates and serialise JSON on **minutes-to-hours** timers.
+* **`_drop_private_profile`**, **`forget`** tear down, which is their job.
+* **`_check_updates`** runs a subprocess on a timer and is already W-S03/W-B22
+  for other reasons.
+
+So: **one instance, in a look-specific widget, at 3 ticks a minute.** A clean
+sweep is a result too, and this one is nearly clean.
 
 ---
 
