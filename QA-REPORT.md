@@ -1196,6 +1196,79 @@ flaky suites call `js()`. But what is *proven* is that the mechanism exists and
 fires, not that it caused each specific red: `test_libs` and `test_permreload`
 call `js()` nowhere and have some other cause.
 
+## W-B21 — the page the browser opens on retains 4 MB a minute
+
+**Severity: High.** Unbounded, in the default state, on a browser whose brief
+for this phase is "doesn't eat ram".
+
+`start.html` is what the browser opens on. While it is the visible tab, the
+QtWebEngine **compositor process** grows at **+4.35 MB/min**, monotonically,
+with no flattening over 22 minutes. Navigating away **stops the accrual and
+releases none of it**:
+
+    on start.html      94.4 -> 140.0 over 10 min    +4.35 MB/min
+    then about:blank  144.1 -> 151.5 over 12 min    +0.70 MB/min
+    accrued while displayed   +45.6 MB
+    released after leaving     -2.7 MB   (nothing came back)
+
+The post-navigation slope matches the from-boot `about:blank` control, so the
+leak is tied to the page being shown, and 45 MB of it is held for the life of
+the process. Leave the browser on its own start page for an hour and that is
+~250 MB it will not give back.
+
+### Four arms, and what each one rules out
+
+    start.html (the default tab)   +4.35 MB/min   10/10 steps up
+    minimal + 1s clock             +1.10 MB/min   10/10 steps up
+    minimal, static                +0.23 MB/min    8/10 steps up
+    about:blank                    +0.25 MB/min    6/10 steps up
+
+Two independent controls agree on a floor near **0.24 MB/min** — that is the
+offscreen software compositor itself and is almost certainly a property of this
+measurement environment rather than of the browser. Against that floor:
+
+* **the start page: +4.13 MB/min excess.** The finding.
+* **a bare 1-second clock: +0.87 MB/min excess, 10 of 10 samples up.** Its own
+  small finding: ~14.5 KB retained per tick for writing `textContent` on two
+  nodes. It explains **21%** of the start page.
+* **3.26 MB/min is start-page work not yet identified.** Named as unknown
+  rather than guessed at.
+
+### What this measurement got wrong first, four times
+
+Worth recording, because every wrong answer had a clean monotonic fit behind it
+and would have been published as fact:
+
+1. **"the tabs leak"** — 8 cycles of 30 tabs gave +24.5 MB and a tidy
+   +2.96 MB/cycle. An idle control showed a third of it happened with no tabs
+   at all.
+2. **"an idle browser leaks"** — 22 minutes gave +92.3 MB at +4.3 MB/min, dead
+   linear. The browser was sitting on its default tab, which is not idle.
+3. **"the page animates"** — a grep counted 26 "animation constructs". Reading
+   them: all five `requestAnimationFrame` loops gate themselves, there are no
+   `@keyframes`, and no `animation: infinite`.
+4. **"the clock is the cause, at 73 KB a tick"** — a minimal clock page puts it
+   at 14.5 KB a tick and 21% of the total.
+
+Each was caught by a control, none by re-reading the reasoning. The three-cycle
+run of 2026-10-29 also recorded the main process as *converging* on
+`+32.7 / +0.8 / +0.3`; over eight cycles it reads `199.1, 199.1, 199.1` and then
+climbs to 202.2. Three points could not have told which.
+
+### Not established, and not to be claimed
+
+* **Why** the compositor retains it. The *what* is measured; the mechanism is not.
+* **Which** part of the start page accounts for the other 79%. Bisecting a
+  3,000-line shared page is the next step and has not been done.
+* **Windows: `UNVERIFIED — never executed`.** All of this is Linux, `offscreen`,
+  software compositing, no `/dev/dri` access. A real GPU path may not retain
+  frames in PSS at all, and the Windows compositor is not this code.
+
+`start.html` is a shared page under `browser-pages`, so the fix is not this
+edition's to make.
+
+---
+
 ## Suite status
 
 **The run after the port to linux `055eb67`, 2026-11-02: 113 runs, 106 green,
