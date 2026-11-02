@@ -611,7 +611,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-S02 | Five suites adopted from other editions were in **no** list in `win_port.json` — not `copy_files` (the port would raise), not `win_only` (they are not ours). A file in no list reads exactly like a file that is handled | Low | **fixed** |
 | W-B20 | `_boot.py:18` makes a scratch profile with `mkdtemp` and never removes it — no `atexit`, no `rmtree`. `tests/harness.py` has `_tidy_scratch()` doing exactly that for its own prefix, with a docstring describing this consequence. **1348 directories, 2.0 GB, and `/tmp` is a tmpfs, so that is RAM** | Medium | **OPEN — upstream** |
 | W-B19 | Two injected lines draw in `W.accent` while their dead fallback names a different token: the find-in-page hit marks on the scroll rail (`#f9e2af` = `yellow`) and the accessibility checker's **no alt text** outline (`#f38ba8` = `red`). Both render in the link/focus colour, so neither reads as what it is. The payloads send only `accent`/`bg`/`text`, so the fallback is the only record of the intent | Medium | **OPEN — needs the payload first** |
-| W-B21 | While `start.html` (the page the browser opens on) is the visible tab, the QtWebEngine **compositor process** grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised** — the page registers 0 rAF and 0 setTimeout, so it is not page JS; a 1-second clock accounts for 21% | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
+| W-B21 | While `start.html` (the page the browser opens on) is the visible tab, the QtWebEngine **compositor process** grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -1267,6 +1267,16 @@ The other two engine processes stayed flat for the whole 70 minutes
 (`tree_pss − compositor_pss` held at 37.6 MB, unchanged to the decimal). It is
 one process.
 
+**Short windows manufacture a rate, and this box does not.** browser-linux
+flagged it from their own 2.5-minute pilot — `326.7 / 327.0 / 330.3 / 342.2 /
+342.5` is one jump and two plateaus, and least squares calls it +8.90 MB/min.
+Under about ten minutes the growth is a step, not a slope. Worth stating what
+the data here does, rather than assuming it inherits that: over the 25
+consecutive samples recorded, every single minute-to-minute increment lies
+between **+4.3 and +4.9 MB**, with no plateau and no jump anywhere. On this box
+the slope is a slope. The caution still applies to any quick re-confirm, which
+is why there will not be one under ten minutes.
+
 **On the hour figure.** The withdrawn draft said "~250 MB an hour" off a
 22-minute window. The rate is now measured across a full hour at
 **4.4 MB/min = 264 MB/hour**, so an hour may be stated as measured. Anything
@@ -1287,18 +1297,34 @@ measurement environment rather than of the browser. Against that floor:
 * **a bare 1-second clock: +0.87 MB/min excess, 10 of 10 samples up.** Its own
   small finding: ~14.5 KB retained per tick for writing `textContent` on two
   nodes. It explains **21%** of the start page.
-* **3.26 MB/min is unattributed, and it is NOT start-page work.** Patching
-  `requestAnimationFrame` and `setTimeout` on the live start page and watching
-  for a minute gives **0 rAF registrations and 0 setTimeout** — no loop
-  re-registers, so nothing on the page is producing frames. An earlier draft
-  called this "start-page work not yet identified", which implied a running
-  thing waiting to be found; there isn't one.
+* **3.26 MB/min is unattributed. It IS page-driven — a claim that it was not
+  is withdrawn, 2026-11-02, after browser-linux read the source.**
+  `start.html:2792` is an unconditional `setInterval(tick, 1000)`.
+  `setInterval` is neither `requestAnimationFrame` nor `setTimeout`, so the
+  probe's **0 rAF and 0 setTimeout** was a true result that could not see the
+  1 Hz driver at all. The page is supplying the frames.
 
-  What the numbers do say: the SAME one-second tick produced +1.10 MB/min on a
-  minimal page and +4.35 on `start.html`. Same work, four times the growth —
-  so it scales with how much there is to raster, not with what the page does.
-  That fits retained raster or transfer buffers. It does not fit a line of
-  JavaScript, which is why the bisect of this page was dropped rather than run.
+  **The probe's own docstring said so**, and the section quoted the result past
+  it: *"Already-registered `setInterval` timers are invisible to this, which is
+  why the clock was measured separately."* Written by me, two hours before I
+  wrote "nothing on the page is producing frames". That is this section's
+  seventh detector-that-reads-like-a-pass, and the first where the warning was
+  in my own file.
+
+  What survives: the SAME one-second tick gives +1.10 MB/min on a minimal page
+  and +4.35 on `start.html`. Linux's reading sharpens why that comparison is
+  fair — the minimal page was mechanically the same driver, so this is one
+  frame rate costing four times as much on a bigger DOM, not frames versus no
+  frames. `tick()` rewrites `clock` and `date` `textContent` every second, but
+  with seconds off the string only changes once a minute, so **59 of 60 writes
+  are identical to what is already rendered.** Whether an identical write
+  actually costs the memory is being measured by linux.
+
+  **Ruled out, so nobody chases it:** the other `setInterval` in the page,
+  `start.html:2776` (`pick`, the wallpaper slideshow, ≥60 s, and it repaints
+  `document.body.style.backgroundImage`) is behind `if (!shots.length) return;`
+  at line 2748. No wallpaper folder is picked in these runs, so it is never
+  registered.
 
 ### What this measurement got wrong first, four times
 
@@ -1327,9 +1353,11 @@ climbs to 202.2. Three points could not have told which.
   is measured; the mechanism is not. "Leak" here means "no ceiling in 70
   minutes", not a named allocation site.
 * **Whether there is anything in the page to find at all.** A bisect of the
-  3,118-line shared page was approved and then dropped: with no loop running,
-  it would have localised the growth to whichever chunk happened to raster
-  hardest and produced a confident, specific, wrong answer. The hour was saved
+  3,118-line shared page was approved and then dropped. The reason given at the
+  time — "no loop is running" — was wrong; one is. It stays dropped on the
+  better reason: there is a named 1 Hz driver to measure directly, and a bisect
+  would have localised the growth to whichever chunk happened to raster hardest
+  and produced a confident, specific, wrong answer. The hour was saved
   by a question from browser-linux and a sixty-second probe, not by rereading
   the reasoning — which is this section's fifth instance of exactly that.
 * **Windows: `UNVERIFIED — never executed`.** All of this is Linux, `offscreen`,
