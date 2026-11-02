@@ -1091,6 +1091,7 @@
   "_win_only_files_readme": "Files that exist only in this edition and must never be clobbered by a port. CHANGELOG.md is here because each edition tells its own story: the Linux changelog names Linux commits and Linux-only work, and merging the two would read as neither. README.md is NOT here - it is a merge_file, see edited_here. The installer lives here too: packaging/, the build workflow, VERSION, and the three suites under tests/ that only make sense for this edition -- the port base, the leak guard and the PowerShell lint. tests/test_workflow.py checks that every name on this list is still on disk, because nothing in win_port.py reads it and a list nobody checks is a list that goes stale.",
   "win_only_files": [
     ".github/workflows/build-exe.yml",
+    "# nearly the same file as upstream's, but the Linux one ignores\n    # web_engine.so, the compiled artifact of the engine pane, which does\n    # not exist here. Was ALSO listed in linux_only_files until 2026-11-02;\n    # one file, one list.",
     ".gitignore",
     "CHANGELOG.md",
     "QA-REPORT.md",
@@ -1113,7 +1114,6 @@
   "linux_only_files": {
     "install.sh": "POSIX installer; install.bat is this edition's equivalent",
     ".github/": "CI runs on the Linux repository",
-    "_boot.py": "developer harness, not shipped",
     "_shot.py": "developer harness, not shipped",
     "_shots.py": "developer harness, not shipped",
     "_startbg.py": "developer harness, not shipped",
@@ -1132,8 +1132,7 @@
     "_mastershot.py": "developer harness, not shipped",
     "_setcheck.py": "developer harness, not shipped",
     "_setshots.py": "developer harness, not shipped",
-    "_wizshot.py": "developer harness, not shipped",
-    ".gitignore": "nearly the same file, but the Linux one ignores web_engine.so, the compiled artifact of the engine pane, which does not exist here"
+    "_wizshot.py": "developer harness, not shipped"
   },
   "_adopted_pending_readme": [
     "EMPTY, and the reason it can be is the point.",

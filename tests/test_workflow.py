@@ -249,7 +249,14 @@ import json
 
 man = json.loads((HERE.parent / "tools" / "win_port.json")
                  .read_text(encoding="utf-8"))
-only = man["win_only_files"]
+# A '#' entry is prose, not a path -- JSON has no comments and a list
+# of a hundred file names with no explanation is how the next person
+# guesses wrong. win_port.py's names() has honoured that convention for
+# a while; this suite did not, and only got away with it because
+# win_only_files happened to carry no prose yet. The same split as
+# `_boot.py`, whose leading underscore was prose to one reader and a
+# path to the other for two months.
+only = [f for f in man["win_only_files"] if not f.startswith("#")]
 gone = [f for f in only if not (HERE.parent / f).exists()]
 check("every file win_only_files names is on disk", not gone, gone)
 
@@ -286,6 +293,32 @@ check("...and nothing is both pending and ported", not claimed, claimed)
 check("every adopted_pending entry says where it came from",
       all(str(why).strip() for why in pending.values()),
       [q for q, why in pending.items() if not str(why).strip()])
+
+# ...and the OTHER way a list can lie: one path in two of them, saying
+# two different things about the same file. On 2026-11-02 `_boot.py`
+# was in copy_files AND in linux_only_files as "developer harness, not
+# shipped" -- it has been ported since the port stopped reading a
+# leading underscore as prose, so the decline was simply left behind,
+# and the reason read as false. `.gitignore` was in win_only_files and
+# linux_only_files at once, agreeing in effect and duplicating the
+# statement.
+#
+# Harmless while linux_only_files was prose. NOT harmless since it
+# became the skip list for win_port.unlisted_upstream(), where a wrong
+# entry means an upstream file is silently passed over -- a
+# documentation list promoted to a guard input without being audited
+# first, which is the mistake this suite exists to catch in others.
+LISTS = ("copy_files", "merge_files", "win_only_files", "linux_only_files",
+         "adopted_pending")
+where = {}
+for name in LISTS:
+    for q in man.get(name) or []:
+        if str(q).startswith("#"):
+            continue
+        where.setdefault(str(q), []).append(name)
+twice = {q: ls for q, ls in where.items() if len(ls) > 1}
+check("no path is in two file lists at once", not twice,
+      "; ".join("%s in %s" % (q, " + ".join(ls)) for q, ls in twice.items()))
 
 print()
 if fails:
