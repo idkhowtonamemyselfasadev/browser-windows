@@ -1396,79 +1396,57 @@ run of 2026-10-29 also recorded the main process as *converging* on
 `+32.7 / +0.8 / +0.3`; over eight cycles it reads `199.1, 199.1, 199.1` and then
 climbs to 202.2. Three points could not have told which.
 
-### The engine half does not fit this box, and the reason may matter
+### Resolved: it is page code, both halves, and there is no engine bug
 
-browser-linux's clean arms decompose the leak into two, in two allocators:
-**leak A** in `[anon:v8]`, page-driven, +13.4/+1.4/+1.1 MB across 60/~1/0
-`textContent` writes a minute, worth ~1.4 MB/min and cut 41% by guarding the
-clock; and **leak B** in `[heap]`, +14.4/+14.4/+14.3, flat to a tenth across
-the same three arms, worth ~1.65 MB/min and described as reachable by no page
-edit.
+browser-linux closed the mechanism on its own rig. Three arms, all carrying the
+same 720-element body:
 
-**Leak B at ~1.65 MB/min cannot be present on this box as a page-independent
-term, because two arms here came in underneath it:** minimal-static at
-**+0.42** and `about:blank` at **+0.59 MB/min**, three to four times smaller. A
-floor cannot sit below a constant that is supposed to be inside it.
+    still  timer + Intl + no write    [heap] +14.3   +2.15 MB/min
+    bare   timer, NO Intl, no write   [heap]  +0.0   +0.51 MB/min
+    idle   no timer at all            [heap]  +0.1   +0.48 MB/min
 
-Two readings, and they call for different fixes:
+`bare` keeps the timer **and** the DOM and the heap does not move. So the timer
+is innocent, the DOM is innocent, and so is the engine: the cost is
+`toLocaleTimeString` building a fresh `Intl.DateTimeFormat` twice a second. The
+budget closes — floor 0.48 + writes 1.52 (`[anon:v8]`) + Intl 1.67 (`[heap]`)
+= 3.67 against 3.72 measured.
 
-1. **This box's leak B really is ~0.5 MB/min**, and `start.html`'s 4.35 is
-   mostly the page-driven half. Then the clock guard would cut *this* number a
-   lot rather than barely — the opposite of a V8-near-zero divergence.
-2. **Leak B is not page-independent.** It may scale with how much page there
-   is, and linux's three arms varied **writes per minute at a constant page**.
-   Writes-invariant is not DOM-invariant: "flat across 60/1/0 writes" is
-   exactly what was measured, and "no page edit can reach it" is a larger claim
-   that does not follow from those three arms.
+**Everything this section argued about leak B being unreachable engine
+behaviour is wrong, and so is everything built on it.** Specifically retracted:
 
-**Correction to this section's own framing, same day.** It called
-`start.html` "a big DOM". It is not. The file is 112 KB and **70 static tags**;
-everything else is inline `<script>` and `<style>`, 2.7 KB of markup once those
-are stripped. With 30 `createElement`/`innerHTML` sites the live DOM comes to
-browser-linux's measured **158 tags** — and linux's synthetic rig uses **720
-elements**, 4.5× *more* than the real page it stands for. So "big DOM" was read
-off a file size, which is the same mistake as reading a role off a thread name.
+* **the `0.49 + 0.0016 × elements` fit and the 83% it produced — withdrawn
+  outright, not adjusted.** Its right-hand anchor, 1.65 MB/min, was read as a
+  flat page-independent engine constant. It was the Intl calls all along. A fit
+  whose anchor meant something else cannot be rescued by correcting its form.
+* **the DOM-scaling hypothesis** — dead from both ends. `idle` carries 720
+  elements at a 0.48 floor, so DOM size buys nothing.
+* **the two-axis confound** in `minimal-static.html` — real, and carefully
+  established over two rounds, on a question that turned out not to exist.
 
-That does not retire the question, it sharpens it, because the two boxes now
-bracket it from both ends — 5 tags here, 720 there, the real page between:
+**What survives.** The floor, and only the floor: **0.48 on linux's box and
+~0.5 on this one**, two machines agreeing on a number neither borrowed. And the
+corrected arm slopes, which stand as measurements whatever they were argued to
+mean.
 
-    N=   5 elements (minimal-static)   leak B  0.50 MB/min   measured, this box
-    N= 720 elements (linux's rig)      leak B  1.65 MB/min   measured, linux
-    N= 158 elements (start.html live)  leak B  ~0.75 MB/min  PREDICTED
+This box's own data leans the same way as linux's conclusion, from the one
+direction linux cannot test: `minimal-clock.html` calls **both**
+`toLocaleTimeString` and `toLocaleDateString` — two fresh Intl constructions
+per tick — and reads +1.10 against the +0.42 floor on a **5-element** page. So
+formatter calls cost, and they cost with no DOM anywhere near them.
 
-Fitting those two points linearly gives `0.49 + 0.0016 × elements`, which puts
-the real page's leak B near **0.75**, leaving **~3.65 of the 4.40 — 83% — as
-leak A, the writes**. If that holds, guarding the clock is worth far more on the
-shipped page than the 41% linux measured, because 41% was a ratio taken on a
-rig with 4.5× the DOM diluting it.
+**The open cross-box question, stated because it is not settled.** Linux's
+budget for this work is 1.52 + 1.67 = 3.19 MB/min. The excess here is 0.68 for
+arguably *more* formatter work — **4.7× apart, in the same direction**. The
+arms on this box never split `[heap]` from `[anon:v8]`, so that gap could be
+the machine, the ICU build under this Qt, or an attribution error here. If it
+is the last of those, then the floor's agreement with 0.48 is luck rather than
+corroboration, and the one number of mine that survived the day goes with it.
+`.../scratchpad/mem/intl.py` is written to answer it: a 1 Hz timer with an
+empty body against the same timer calling `toLocaleTimeString` and not
+writing, both split by allocator.
 
-**That number is a hypothesis and it is labelled one.** Two points, measured on
-two different machines, with a linear form assumed and nothing to justify the
-form — and the 5-element point is a floor that has not yet been split into
-`[heap]` and `[anon:v8]`, so part of it may not be leak B at all.
-
-**Worse than that, and found by reading my own fixture rather than by anyone
-pushing back:** `minimal-static.html` contains **no `<script>` at all**. So
-the fit's two ends differ on *two* axes, not one — 5 versus 158 elements
-**and** zero JavaScript versus 112 KB of it. A floor measured on a page with
-almost no V8 heap may be low for that reason and not because its DOM is small,
-in which case the whole `0.49 + 0.0016 × elements` line is one variable read
-off two. The arm set gained a **fourth arm** for exactly this: `minimal-clock`
-with the same 1-second suppression as arm B — 5 elements, JS present, zero
-writes — so the DOM term can be taken with JavaScript running on both sides.
-`minimal-static` stays in, but only as the no-V8-at-all reference it actually
-is, not as the anchor. This is
-exactly the shape of the "~250 MB an hour" extrapolation withdrawn earlier in
-this section: a clean fit across too few points. It is written down so linux's
-real-page A/B can kill it, not so it can be quoted.
-
-**And the decisive measurement is no longer this arm.** Linux is measuring
-`start.html` as shipped against the same page guard-applied, which gives MB/min
-on the page that actually ships instead of a percentage from a page nobody
-opens. Linux's `idle` arm — its 720-element body with no timer at all — is also
-already in flight, so the zero-writes-at-constant-DOM case I called unrun is
-running. What stays useful here is the **cross-box** set, because the floor at
-5 elements is a point linux's rig cannot produce.
+The fix is now both halves — cache the formatter pair, guard the write — and
+it is linux's to land in the shared page.
 
 ### Not established, and not to be claimed
 
