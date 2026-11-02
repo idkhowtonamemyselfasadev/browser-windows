@@ -12,6 +12,40 @@
 # the vault or the config of the browser you actually use.
 R=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$R" || exit 1
+# The interpreter, resolved ONCE and then PROVED.
+#
+# This script said bare `python` until 2026-11-02, and this box has no
+# `python` -- only /usr/bin/python3 and .venv/bin/python. So a full run
+# exited 127 on all 101 suites plus both tail steps, and the output had
+# no assertion, no traceback and no check name anywhere in it. That
+# reads like catastrophic breakage rather than a missing binary, and it
+# is how test_offpalette and a stale guard in test_bar sat red across
+# commits: nobody could complete a full suite to see them.
+#
+# THE TELL: when the error names `timeout` or the shell rather than a
+# Python file, the interpreter was never reached. Look there first, not
+# at the hundred suites.
+#
+# Resolving is not enough on its own. /usr/bin/python3 is present here
+# and has no PyQt6, which is the same failure wearing a different exit
+# code -- so each candidate has to import the engine before it is
+# accepted. The venv comes first because it is the one that can.
+PY=""
+for cand in "$R/.venv/bin/python" python3 python; do
+  command -v "$cand" > /dev/null 2>&1 || continue
+  "$cand" -c "import PyQt6.QtWebEngineWidgets" > /dev/null 2>&1 || continue
+  PY="$cand"
+  break
+done
+if [ -z "$PY" ]; then
+  echo "no interpreter here can import PyQt6.QtWebEngineWidgets." >&2
+  echo "tried: $R/.venv/bin/python, python3, python" >&2
+  echo "nothing was run -- this is the runner, not the suites." >&2
+  exit 127
+fi
+echo "interpreter: $PY ($("$PY" -c 'import sys;print(sys.version.split()[0])'))"
+echo ""
+
 export QT_QPA_PLATFORM=offscreen
 # no browser started in here goes looking for library updates: a real
 # check per test would be slow, would depend on what the distribution is
@@ -36,7 +70,7 @@ run() {
   # the exit status has to come from python, not from tail: piping
   # straight into tail reports tail's status, which is always 0 -- so
   # every failure, every crash and every timeout would read as a pass.
-  timeout 900 python "$1" > "$OUT/log" 2>&1
+  timeout 900 "$PY" "$1" > "$OUT/log" 2>&1
   rc=$?
   tail -n 3 "$OUT/log"
   echo "exit=$rc"
@@ -61,14 +95,14 @@ done
 
 cd "$R" || exit 1
 echo "=== invariants ==="
-timeout 900 python .github/scripts/invariant_checks.py > "$OUT/log" 2>&1
+timeout 900 "$PY" .github/scripts/invariant_checks.py > "$OUT/log" 2>&1
 rc=$?
 tail -n 4 "$OUT/log"
 echo "exit=$rc"
 [ "$rc" -eq 0 ] || bad="$bad invariants"
 
 echo "=== the Windows regions are all still in place ==="
-timeout 300 python tools/win_port.py --check > "$OUT/log" 2>&1
+timeout 300 "$PY" tools/win_port.py --check > "$OUT/log" 2>&1
 rc=$?
 tail -n 3 "$OUT/log"
 echo "exit=$rc"
