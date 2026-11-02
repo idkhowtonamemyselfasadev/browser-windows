@@ -611,6 +611,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-S02 | Five suites adopted from other editions were in **no** list in `win_port.json` — not `copy_files` (the port would raise), not `win_only` (they are not ours). A file in no list reads exactly like a file that is handled | Low | **fixed** |
 | W-B20 | `_boot.py:18` makes a scratch profile with `mkdtemp` and never removes it — no `atexit`, no `rmtree`. `tests/harness.py` has `_tidy_scratch()` doing exactly that for its own prefix, with a docstring describing this consequence. **1348 directories, 2.0 GB, and `/tmp` is a tmpfs, so that is RAM** | Medium | **OPEN — upstream** |
 | W-B19 | Two injected lines draw in `W.accent` while their dead fallback names a different token: the find-in-page hit marks on the scroll rail (`#f9e2af` = `yellow`) and the accessibility checker's **no alt text** outline (`#f38ba8` = `red`). Both render in the link/focus colour, so neither reads as what it is. The payloads send only `accent`/`bg`/`text`, so the fallback is the only record of the intent | Medium | **OPEN — needs the payload first** |
+| W-B21 | While `start.html` (the page the browser opens on) is the visible tab, the QtWebEngine **compositor process** grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised** — the page registers 0 rAF and 0 setTimeout, so it is not page JS; a 1-second clock accounts for 21% | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -1198,10 +1199,11 @@ call `js()` nowhere and have some other cause.
 
 ## W-B21 — the compositor grows while the default page is shown
 
-**Severity: open — High if it is a leak, Low if it is a bounded cache.** The
-growth is measured and reproducible. Whether it has a ceiling is NOT yet
-established, and the two readings want opposite responses, so the severity
-stays unresolved rather than being guessed at the high end.
+**Severity: High, resolved by measurement on 2026-11-02.** The growth has no
+ceiling within seventy minutes: the slope of the last third matches the slope of
+the first to 0.03 MB/min. A cache still filling would have bent. This one did
+not, so it is read as a leak. Scope stays Linux / `offscreen` / software
+compositing — see *Windows* at the bottom.
 
 **METRIC, because the number is meaningless without it:** the `Pss:` field of
 `/proc/<pid>/smaps_rollup` for **one process** — the compositor — walked via
@@ -1230,7 +1232,45 @@ written.** A steady linear slope looks identical for an unbounded leak and for
 a cache still filling, and QtWebEngine has several caches that grow on their
 own and do not release on navigate — the HTTP cache, GPU transfer buffers, the
 code cache. Twenty-two minutes cannot tell those apart. browser-linux asked the
-question; a 70-minute run is the answer and is pending.
+question; the seventy-minute run below is the answer.
+
+### Seventy minutes: the slope does not bend
+
+A sample a minute for 70 minutes on the default tab, same metric, nothing else
+running on the box:
+
+    first third   +4.40 MB/min
+    middle third  +4.40 MB/min
+    last third    +4.43 MB/min
+    peak 405.4 MB   final 405.4 MB   (start ~97)
+
+**No ceiling, no curvature, no plateau.** The last third is not slower than the
+first; if anything it is 0.03 MB/min faster, which is noise. Every cache
+hypothesis in the paragraph above predicts a bend, and 70 minutes and 308 MB
+were enough to see one. That is what moves this from *open* to *High*.
+
+Two guards on the number itself:
+
+* **Swap was flat.** `SwapFree` did not move across the window (used held at
+  4090–4091 MB, already in that state before the run). PSS does not count
+  pages that have been swapped out, so a measurement taken while swapping is
+  not one. This one was not.
+* **A second, independent accounting agrees.** Over the last 25 minutes the
+  compositor's PSS rose **+110.6 MB** (294.8 → 405.4) while the kernel's
+  `MemAvailable` fell **−110 MB** (6161 → 6051). Those two numbers come from
+  different sources and are not derived from each other. So the correction
+  three paragraphs up — "a per-process PSS figure is not what the browser costs
+  the machine" — stands as a statement about PSS, but here the machine-level
+  figure happens to track it: the memory is really gone, not re-accounted.
+
+The other two engine processes stayed flat for the whole 70 minutes
+(`tree_pss − compositor_pss` held at 37.6 MB, unchanged to the decimal). It is
+one process.
+
+**On the hour figure.** The withdrawn draft said "~250 MB an hour" off a
+22-minute window. The rate is now measured across a full hour at
+**4.4 MB/min = 264 MB/hour**, so an hour may be stated as measured. Anything
+past 70 minutes is still extrapolation.
 
 ### Four arms, and what each one rules out
 
@@ -1283,7 +1323,9 @@ climbs to 202.2. Three points could not have told which.
 
 ### Not established, and not to be claimed
 
-* **Why** the compositor retains it. The *what* is measured; the mechanism is not.
+* **Why** the compositor retains it. The *what* is measured and the *unbounded*
+  is measured; the mechanism is not. "Leak" here means "no ceiling in 70
+  minutes", not a named allocation site.
 * **Whether there is anything in the page to find at all.** A bisect of the
   3,118-line shared page was approved and then dropped: with no loop running,
   it would have localised the growth to whichever chunk happened to raster
