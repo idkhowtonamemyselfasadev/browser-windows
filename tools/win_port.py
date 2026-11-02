@@ -320,6 +320,14 @@ def generate(manifest, to_rev, verbose=True):
             % ", ".join(drift))
 
     files, counts = apply_substitutions(files, manifest["substitutions"])
+    lost = exclusive_kept(files)
+    if lost:
+        raise PortError(
+            "the port would delete content only this edition has:\n  - "
+            + "\n  - ".join(lost)
+            + "\nA substitution can put a line back; it cannot put a block "
+              "back.\nMove the feature upstream, or list the page out of "
+              "copy_files.")
     if verbose:
         print()
         for rule, hit in zip(manifest["substitutions"], counts):
@@ -442,6 +450,72 @@ def relation(repo, base, branch=None):
         return "ahead"
     shared = soft(repo, "merge-base", branch, base)
     return "diverged" if shared else "unrelated"
+
+
+#: browser-pages' shared config, which is the only record of what a
+#: page holds that upstream does not. Overridable for a test; `~` is
+#: resolved off the account for the same reason linux_repo() does it.
+PAGES_JSON = "~/claude/browser-pages/pages.json"
+
+
+def _pages_config():
+    """browser-pages' pages.json, or None if it is not beside us."""
+    raw = os.environ.get("WIN_PORT_PAGES_JSON") or PAGES_JSON
+    if raw.startswith("~"):
+        try:
+            import pwd
+            raw = pwd.getpwuid(os.getuid()).pw_dir + raw[1:]
+        except Exception:                               # noqa: BLE001
+            raw = os.path.expanduser(raw)
+    path = Path(raw)
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def exclusive_kept(files, edition="windows"):
+    """Whether the generated pages still hold what only this edition has.
+
+    THE HAZARD: all nine shared pages are in copy_files, so a port
+    replaces each one wholesale with upstream's. The substitutions put
+    the font stacks and the Windows paths back -- a find-and-replace
+    can restore a LINE. It cannot restore a BLOCK that upstream never
+    had, so anything this edition owns outright would go silently, and
+    the next commit would carry the deletion.
+
+    pages.py already refuses to `port` a page with exclusive content,
+    and `pages.py check <edition>` already reports EXCLUSIVE GONE. So
+    the detection exists; what was missing is this tool consulting it.
+    browser-mac's porter forked the same operation without the guard
+    and nearly took mictest.html's call panel out today -- and
+    mictest.html is in this manifest's copy_files too.
+
+    Checked BEFORE anything is written, against the text in memory,
+    because a check that runs afterwards reports a loss it has already
+    caused. Returns a list of problems, empty if clean.
+
+    No pages.json beside us (a clone without browser-pages) is reported
+    as a check that could not run, never as a pass.
+    """
+    cfg = _pages_config()
+    if cfg is None:
+        return ["pages.json is not beside this checkout, so nothing "
+                "verified that the pages still hold what only this "
+                "edition has. NOT a pass."]
+    mine = (cfg.get("exclusive") or {}).get(edition) or {}
+    bad = []
+    for page, items in mine.items():
+        if page not in files:
+            continue            # not ported here, so not at risk here
+        for item in items:
+            if item["marker"] not in files[page]:
+                bad.append("%s would lose %s (marker %r)"
+                           % (page, item.get("what", "exclusive content"),
+                              item["marker"][:60]))
+    return bad
 
 
 def unlisted_upstream(manifest, rev):
