@@ -1219,9 +1219,26 @@ establish the role. What the recorded evidence does support: of three engine
 children, two had only a `QtWebEngineProc` thread and sat flat at ~20 and ~16 MB
 (the zygotes), and one had `Chrome_ChildIOT`, `Compositor` and three
 `ThreadPool*` threads. With no GPU process under `offscreen` software
-compositing, that one working child is **the renderer** — which makes it the
-same process browser-linux attributes their leak to, under a different name.
-Read every "compositor" below as "that one process". Not own-process RSS, which reports a
+compositing, that one working child is **most likely the renderer**, which would
+make it the same process browser-linux attributes their leak to under a
+different name.
+
+**That is still an inference and it is flagged as one.** It is a better
+inference than the thread name — it rests on the other two children being flat
+at 20 and 16 MB against this one's 94 → 405, so the `max()` pick could not have
+landed on a zygote — but the measurement that settles it is
+`grep -c "anon:v8" /proc/<pid>/smaps`: V8's JS heap exists in a renderer and not
+in the GPU/viz compositor. That needs a **live** pid, and this one exited when
+the run ended. It is queued, not done. Read every "compositor" below as "that
+one process", and nothing here as a verified role.
+
+**Do not try to recover the heap-vs-V8 split from this run's data — it is not
+in there.** `smaps_rollup` is a single `[rollup]` line with one summed `Pss:`
+and no mapping names, so the per-kind breakdown was never captured, and no
+re-reading of the 70-minute log will produce it. browser-linux's one-minute
+sample split about evenly, `[heap]` +1.23 MB and `[anon:v8]` +1.14. Whether
+this box splits the same way is unmeasured. `.../scratchpad/mem/bykind.py`
+is written and its parser verified; it runs when the box is clear. Not own-process RSS, which reports a
 fraction; not summed RSS, which double-counts shared mapped libraries. A
 per-process PSS figure is sound, but it is **not** "what the browser costs the
 machine", and nothing here should be read as that.
@@ -1373,7 +1390,10 @@ climbs to 202.2. Three points could not have told which.
 
 ### Not established, and not to be claimed
 
-* **Why** the compositor retains it. The *what* is measured and the *unbounded*
+* **Which process, by measurement rather than inference.** See the metric
+  paragraph: the role is argued, not measured, and the one-line check that
+  would settle it needs a live pid.
+* **Why that process retains it. The *what* is measured and the *unbounded*
   is measured; the mechanism is not. "Leak" here means "no ceiling in 70
   minutes", not a named allocation site.
 * **Whether there is anything in the page to find at all.** A bisect of the
