@@ -22,6 +22,7 @@ its exit code.
 """
 import os
 import sys
+import atexit
 import shutil
 import tempfile
 import threading
@@ -29,9 +30,44 @@ import http.server
 import socketserver
 import functools
 
-DATA = os.path.join(tempfile.gettempdir(), "blackvid-probe-%d" % os.getpid())
+PREFIX = "blackvid-probe-"
+DATA = os.path.join(tempfile.gettempdir(), PREFIX + str(os.getpid()))
+
+
+def _tidy_old():
+    """Remove this probe's own leftovers, by liveness and not by age.
+
+    The engine's teardown crash (134/139) can take the process down
+    before the rmtree at the end of a run, so a tidy-up that only
+    happens on the way out does not happen. Each run owns exactly the
+    directory named after its pid, so a directory whose pid is gone is
+    nobody's -- which is the test, rather than how old it looks. Only
+    this prefix is ever touched: /tmp is shared.
+    """
+    root = tempfile.gettempdir()
+    for name in os.listdir(root):
+        if not name.startswith(PREFIX):
+            continue
+        tail = name[len(PREFIX):]
+        if not tail.isdigit():
+            continue
+        pid = int(tail)
+        if pid == os.getpid():
+            continue
+        try:
+            os.kill(pid, 0)          # alive: another run owns it
+            continue
+        except ProcessLookupError:
+            pass
+        except OSError:
+            continue                 # someone else's, or not ours to ask
+        shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+
+
+_tidy_old()
 shutil.rmtree(DATA, ignore_errors=True)
 os.makedirs(DATA, exist_ok=True)
+atexit.register(shutil.rmtree, DATA, True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # never the real home: DATA_DIR on non-Windows is ~/.local/share/browser
 os.environ["HOME"] = DATA
