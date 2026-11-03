@@ -616,7 +616,10 @@ a forgiving fallback returning a plausible wrong value.
 | W-B22 | The own-requests log promises to write down the update check — `OwnRequests`' docstring calls it "a complete answer", `settings.html:2972` names it to the user — and `createRequest` is the only writer. The update check bypasses it: the only two `urllib.request.urlopen` calls in the file (`869`, `881`) are both in it, plus a `QProcess git fetch`. Separately, *Auto updates* **off** does not stop the startup fetch: `_check_updates` never reads `autoUpdate`. Source-verified, not executed | Medium | **OPEN — upstream; the no-`.git` path is Windows' shipping case** |
 | W-B23 | `TaskBar._show_time` (`browser.py:20930`) is the native twin of the `start.html` clock bug. A 20-second repeating `QTimer` constructs a **fresh `QLocale()` every tick**, formats `QTime.currentTime()` to `ShortFormat` — which is `HH:MM` and changes once a **minute** — then calls `setText`, `adjustSize()` and a full `_relayout()` unconditionally. **Two of every three ticks set a string identical to the one on screen** and relayout the bar for it. Timer lifecycle is correct (`showEvent`/`hideEvent`), so it only runs while the taskbar look is on. **Rate NOT measured — do not quote one** | Low | **OPEN — upstream** |
 | W-S05 | `win_port.json` names `linux_repo: ~/browser`, the pre-rewrite clone whose local `main` shares **no** history with the live repo (`merge-base` is empty). Same mis-pointing browser-mac found in `mac_port.json`. **But the base is sound here**: `UPSTREAM` is `origin/main`, a porter reads a ref not a working tree, and `ported_from 055eb676c` **is** an ancestor of that clone's `origin/main` — where mac's `28a6995` is not. Correct output by a fragile route; one stale fetch there and a port silently reads an older upstream | Low | **OPEN — parked on the fleet repoint** |
-| W-B21 | While `start.html` (the page the browser opens on) is the visible tab, one QtWebEngine child process (**the renderer** — this report first called it the compositor off a thread name; see the section) grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and the kernel's `MemAvailable` falls by the same amount. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
+| W-B21 | While `start.html` (the page the browser opens on) is the visible tab, one QtWebEngine child process (**the renderer** — this report first called it the compositor off a thread name; see the section) grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and `MemAvailable` falls with it — **withdrawn as corroboration**: browser-linux is a tmux session on this same box, so that figure is not attributable to one process. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
+| W-B24 | **The hardware-video-decode switch ships on this edition and cannot work here.** `settings.html:1537` offers "Hardware video decoding (VA-API)" with no platform gate, and every flag behind it is Linux-only: `VaapiVideoDecoder`, `VaapiVideoDecodeLinuxGL`, `AcceleratedVideoDecodeLinuxGL`, `VaapiOnNvidiaGPUs`, chosen off `/proc/driver/nvidia/version` (`browser.py:64934-64947`), a path that does not exist on Windows. Windows decodes through D3D11/MediaFoundation and ships hardware decode **on**, so the equivalent control there is a *disable*, which this edition does not have. **Its own hint names it as the fix for black video** — so a user hitting exactly the bug under investigation is pointed at a switch that on this platform can be neither on nor off. Precedent in the same dict 1,180 lines above: `gpuChoose`/`gpuWindowsPage` (`browser.py:14351`), whose comment describes this same defect being found and split once | Medium | **OPEN — upstream; needs a capability key, one of ten `*Missing` strings already does this** |
+| W-S06 | `perfVaapiHint` is one of **two** `t_` ids out of **745** in `settings.html` that reach no string key at all — not in `UI_STRINGS`, and not in the alias table at `settings.html:5591` that backs the other sixteen unbacked ids. So the sentence *"Leave it off if videos play as a black screen"* — the only place the browser tells the user what to do about black video — stays English in all 12 UI languages. `uiSizeName2` ("Chrome size") is the other; it has a `uiSizeName` key one alias entry away | Low | **OPEN — upstream, shared `settings.html`** |
+| W-S07 | `chromiumFlags` is a free-text box (`settings.html:3519`) read once at `browser.py:72` before Qt is imported, and a value in it can stop the browser from starting: `--use-gl=desktop` aborts this engine at init (measured, see the section). There is no recovery path in the product — `grep -ci 'safe_\?mode' browser.py` is **0**, no flag-reset, no env override — so the only way back is editing `config.json` by hand, which the user who typed the flag is the least likely to find | Low | **OPEN — upstream; the box that bricks it is the box you fix it from** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -1967,6 +1970,138 @@ work" — this is one of each, in the same feature, and I found them by followin
 somebody else's correction rather than by running either sweep.
 
 ---
+
+## The black YouTube player — what this box could and could not answer
+
+Asked for: reproduce the black video frame on this edition, say whether
+audio plays while the frame is black, and test `--use-gl=angle` vs
+`--use-gl=desktop` vs `--disable-gpu-compositing`.
+
+### The repro was not possible here, and the reason is the bug's own class
+
+The symptom is a video surface that does not composite. This box has no
+compositing to test:
+
+* host is the home server, headless — `DISPLAY`, `WAYLAND_DISPLAY` and
+  `XDG_SESSION_TYPE` are all empty, and the suite forces
+  `QT_QPA_PLATFORM=offscreen` (`tests/harness.py:46`);
+* the engine says so itself on every launch: *"GBM is not supported with
+  the current configuration and Vulkan is not available. Fallback to
+  software rendering."*
+
+So every number below is **software rendering**. A GPU compositing path
+was never exercised, which is exactly the one class of cause most likely
+to be behind the report. "Is it black on this edition too?" and "does
+audio play while it is black?" are both **unanswered** — not answered no.
+And there is no Windows machine or VM here, so anything about real
+Windows behaviour stays `UNVERIFIED — never executed`.
+
+### The flag matrix, measured — one arm is not a diagnostic, it is fatal
+
+Qt 6.11.0 / PyQt6 6.11.0 / QtWebEngine 6.11.2 / Chromium 140.0.7339.225.
+GPU: Intel HD Graphics 630 (Kaby Lake GT2), vendor `0x8086`, one card, no
+NVIDIA. The renderer string is the live engine's answer to WebGL's
+`WEBGL_debug_renderer_info`, not a string scraped out of the binary.
+
+| arm | GL renderer the engine reports | exit |
+|---|---|---|
+| no flag | `ANGLE (Intel, Mesa Intel(R) HD Graphics 630 (KBL GT2), OpenGL ES 3.2)` | ran |
+| `--use-gl=angle` | identical | ran |
+| `--use-angle=gl` | identical | ran |
+| `--disable-gpu-compositing` | identical | ran |
+| `--use-gl=desktop` | **no page ever loaded** | 134 |
+| `--use-gl=swiftshader` | **no page ever loaded** | 134 |
+
+Three things follow.
+
+1. **ANGLE is not a Windows-only variable.** This Linux build already
+   runs WebGL through ANGLE-over-GL. The premise that the windows edition
+   is the ANGLE case and the others are not does not hold for Qt 6.11.
+   What differs on Windows is ANGLE's *backend* — D3D11 — selected with
+   `--use-angle=d3d11|d3d9|gl|swiftshader`, not with `--use-gl=angle`.
+   `UNVERIFIED — never executed`.
+2. **`--use-gl=desktop` does not degrade, it aborts.** The engine prints
+   `--use-gl=desktop is not supported with the current configuration.`
+   and dies at init: stdout is 111 bytes against the baseline's 1155, so
+   the probe's first line never ran. This is **not** the known teardown
+   abort — those arms print their whole result first and die on the way
+   out, and their stderr ends at `Release of profile requested but
+   WebEnginePage still not deleted`, which this one never reaches.
+3. **The renderer string is the wrong instrument for
+   `--disable-gpu-compositing`.** That flag changes who composites, not
+   who serves WebGL. Four identical strings are **not** evidence it did
+   nothing; there is no instrument for it on a box with no compositor.
+
+The caveat on (2) is the engine's own wording: *with the current
+configuration*. This box is already in software fallback, so this is not
+a claim that the flag is fatal on a machine with a working GL stack. It
+is a claim that a configuration exists where it is, and that the product
+hands the user a free-text box that accepts it (W-S07).
+
+### What the engine claims, against what it decodes
+
+Four solid-colour clips (`0x30A0FF`, 320×180, 2 s), decoded and read back
+off a canvas. Seeked rather than played: offscreen the view is never
+visible and Chromium refuses `play()` for video-only background media, a
+refusal with nothing to do with this bug.
+
+| codec | `isTypeSupported` / `canPlayType` | frame 0 read back |
+|---|---|---|
+| VP9 | yes / probably | `PAINTS rgb(48,160,253)` |
+| VP8 | yes / probably | `PAINTS rgb(48,160,253)` |
+| AV1 | yes / probably | `PAINTS rgb(48,160,253)` |
+| H.264 | **no / (empty)** | `DEMUXER_ERROR_NO_SUPPORTED_STREAMS` |
+| HEVC | no / (empty) | not tested |
+| AAC | no / (empty) | not tested |
+
+* **The AV1 mechanism did not reproduce.** `browser.py:3509` says some
+  builds claim AV1 and then hand the player a black rectangle. This build
+  does claim AV1 — and decodes it to the right colour. A **null**, and a
+  narrow one: software decode, one build, one box.
+* **This engine has no proprietary codecs.** No H.264, no AAC, no HEVC,
+  confirmed by a real clip and not only by the claim. YouTube serves
+  VP9/AV1 so it survives, but any site that offers H.264 only cannot
+  play — worth knowing before a black frame is blamed on compositing.
+* `YOUTUBE_JS` is inserted **unconditionally** (`browser.py:47311`, not
+  inside any `if`), so its AV1 refusal does not ride on the ad-block
+  toggle. A second **null**, and the one worth having.
+
+### The file already names three causes of a black player
+
+None of this is new ground; the code carries the answers and its own
+words match the report better than the GL hypothesis does.
+
+* `browser.py:64934` — *"Hardware video decode is opt-in (the "vaapi"
+  toggle). Forced on, a card/driver that cannot really do it — NVIDIA
+  VA-API most of all — **decodes every frame to black while the page
+  renders fine**."* That is the reported symptom, with a named switch.
+* `browser.py:238` — *"The decoder has to be on the same card as the
+  compositing, or a hardware-decoded video is a **black rectangle with
+  sound**."* This is what the audio question discriminates: black **with**
+  audio points here, at a hybrid-GPU or unusable-VA-API decode, not at
+  the GL backend.
+* `browser.py:3534` — re-serialising YouTube's player response leaves a
+  stale content-length and corrupts the stream: *"(black player)"*. The
+  ad scrub is in-place to avoid precisely this.
+
+So the first question is not which GL flag helps. It is **whether the
+VA-API toggle is on, and whether that machine has one GPU or two** — and
+the answer to that lives in a `config.json` on his machine, which is not
+this one and was not read.
+
+### Not established, and not to be claimed
+
+* that the bug does or does not occur on this edition — not observed;
+* that `--disable-gpu-compositing` changes nothing — no instrument;
+* that `--use-gl=desktop` is fatal anywhere but this configuration;
+* anything about D3D11, ANGLE-on-Windows, or MediaFoundation —
+  `UNVERIFIED — never executed`;
+* the AV1 null as a fleet result: it is one build, software decode, one
+  box with no compositor.
+
+The probe that produced the tables runs headless in about 40 s and prints
+the GL backend, the codec claims and the decoded frame together. It wants
+a box with a display, which this one is not.
 
 ## Suite status
 
