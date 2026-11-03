@@ -1510,6 +1510,43 @@ ordering artifact directly and is the obvious next step if anyone wants it.
 The fix is now both halves — cache the formatter pair, guard the write — and
 it is linux's to land in the shared page.
 
+### The docstring four lines up had already refuted the whole day
+
+browser-linux found this and it is the better finding of the two of us.
+W-B31 quotes `_migrate_gpu_choice`'s docstring for the prior incident.
+**The next sentence is the one that mattered** (`browser.py:502`):
+
+> *"This server cannot reproduce that — it renders in software, where the
+> variables the chooser sets change nothing, measured at 121 frames in
+> four seconds with them and 121 without — so the honest move is to stop
+> applying them on his until there is something to test with."*
+
+A previous session knew this box is not his machine, knew why, measured
+it both ways, and wrote the answer down. Both editions then spent a day
+producing nulls on this box — my GL matrix, my codec table, my
+`gpu_env` table, browser-linux's real-GPU run — and the warning was four
+lines above the function we were both reading.
+
+browser-linux's framing: the failure was not having or lacking access,
+it was not reading what was already there. That is sharper than the
+"modelled hardware instead of reading it" version we had each arrived at
+separately. **One correction to it for my own case, because the
+flattering version is wrong:** I did not read past the signature. The
+sentence was in the same `sed -n '498,600p'` output I used to write
+W-B31 — I read it, took the incident fact out of it, and did not notice
+it was pre-refuting the method I had been using all day. Not reading is
+a smaller failure than reading and extracting only the part that fit.
+
+Swept for others, since an unused warning is worth finding in bulk:
+across all of `browser.py`, phrasings of *cannot reproduce / this server
+does not / no way to test / renders in software* return **exactly one
+hit** — that one. The only other machine-difference note (`browser.py:787`,
+`qrencode` absent here so the QR code is drawn from the standard library
+instead) is the opposite shape: a prior session found a gap between this
+box and his, and removed the dependency rather than leaving a warning.
+So there is no backlog of ignored warnings. There was one, and it was
+the one that would have saved the day.
+
 ### Not established, and not to be claimed
 
 * **Which process, by measurement rather than inference.** See the metric
