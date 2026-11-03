@@ -1109,6 +1109,8 @@
     "tools/blackvid_probe.py",
     "# the flag-path probe: runs the real startup flag assembly over a\n    # config of its own and prints the one string the engine is handed.\n    # Two questions it answers in one run -- are safeFlags read back at\n    # all, and does a feature asked for in the free-text box survive.\n    # Edition-agnostic: it imports the browser.py beside it.",
     "tools/flagpath_probe.py",
+    "# the GPU-env probe: on a two-card machine, says what decodes and\n    # what draws for each gpuCard setting. gpu_apply takes its env as an\n    # argument, so this needs no mocking and no second GPU -- the cards\n    # are a list. Edition-agnostic: imports the browser.py beside it.",
+    "tools/gpuenv_probe.py",
     "tools/port_map.py",
     "tools/runall.sh",
     "# a QA tool, not shipped code and not edition-specific: it takes any\n    # edition's browser.py as an argument. It lives here because this is\n    # the edition that wrote it, and browser.py is hand-ported per\n    # edition, so a timer bug in one is a timer bug in three.",
