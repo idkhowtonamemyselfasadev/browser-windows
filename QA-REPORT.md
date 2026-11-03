@@ -618,6 +618,9 @@ a forgiving fallback returning a plausible wrong value.
 | W-S05 | `win_port.json` names `linux_repo: ~/browser`, the pre-rewrite clone whose local `main` shares **no** history with the live repo (`merge-base` is empty). Same mis-pointing browser-mac found in `mac_port.json`. **But the base is sound here**: `UPSTREAM` is `origin/main`, a porter reads a ref not a working tree, and `ported_from 055eb676c` **is** an ancestor of that clone's `origin/main` — where mac's `28a6995` is not. Correct output by a fragile route; one stale fetch there and a port silently reads an older upstream | Low | **OPEN — parked on the fleet repoint** |
 | W-B21 | While `start.html` (the page the browser opens on) is the visible tab, one QtWebEngine child process (**the renderer** — this report first called it the compositor off a thread name; see the section) grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and `MemAvailable` falls with it — **withdrawn as corroboration**: browser-linux is a tmux session on this same box, so that figure is not attributable to one process. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
 | W-B24 | **The hardware-video-decode switch ships on this edition and cannot work here.** `settings.html:1537` offers "Hardware video decoding (VA-API)" with no platform gate, and every flag behind it is Linux-only: `VaapiVideoDecoder`, `VaapiVideoDecodeLinuxGL`, `AcceleratedVideoDecodeLinuxGL`, `VaapiOnNvidiaGPUs`, chosen off `/proc/driver/nvidia/version` (`browser.py:64934-64947`), a path that does not exist on Windows. Windows decodes through D3D11/MediaFoundation and ships hardware decode **on**, so the equivalent control there is a *disable*, which this edition does not have. **Its own hint names it as the fix for black video** — so a user hitting exactly the bug under investigation is pointed at a switch that on this platform can be neither on nor off. Precedent in the same dict 1,180 lines above: `gpuChoose`/`gpuWindowsPage` (`browser.py:14351`), whose comment describes this same defect being found and split once | Medium | **OPEN — upstream; needs a capability key, one of ten `*Missing` strings already does this** |
+| W-B25 | **The whole "Chromium flags worth having" panel is inert.** `SAFE_FLAGS` (`browser.py:50416`) offers ten switches; `set_safe_flag` writes them to `config["safeFlags"]` and `browser.py:14758` flashes *"needs a restart"*. Nothing ever reads them back into the engine: `_startup_flags()` (`browser.py:63`) reads only `chromiumFlags`, `hostOverrides` and `debugPort`, and each of the eight flag literals unique to this list appears **exactly once in the file — in the list itself**. Measured through the real startup path with three of them set in a config: `--enable-zero-copy` and `--enable-gpu-rasterization` are both absent from the final `QTWEBENGINE_CHROMIUM_FLAGS`. Ten switches, a restart prompt, no effect. **Also clears all ten as suspects in the black-video hunt** — including the curated `--enable-features=VaapiVideoDecoder,VaapiVideoEncoder`, which is not a second route to the VA-API state after all | Medium | **OPEN — upstream, shared `browser.py`** |
+| W-B26 | **The flags box silently drops the one flag form a user is most likely to be told to try.** `_startup_flags()` appends the free-text box's value at import time (`browser.py:99`); `_install_proxy_flags` appends its own `--enable-features=PlatformHEVCDecoderSupport` later (`browser.py:64944`). Two `--enable-features` on one command line, the engine's last. Measured: `--enable-features=ProbeFeatureFromTheTextBox` typed into the box does not survive. **The rule being broken is stated in the comment five lines above the offending append** (`browser.py:64918`): *"Chromium honours only the LAST `--enable-features` on the command line, so everything asked for has to travel in this one flag."* The code obeys it for its own features and not for his. Fix is one `re.sub` to harvest any earlier `--enable-features=` into `feats`, the same way the proxy and widevine flags are already stripped and re-added in that function | Medium | **OPEN — upstream; blocks flag-based diagnosis of W-B24's symptom** |
+| W-B27 | **A fix shipped 2026-11-01 for the black YouTube player rests on a premise both editions have now disproven.** `ae9d74d` ("YouTube: force VP9 by hiding AV1, which this engine cannot really decode") overrides `MediaSource.isTypeSupported` and `canPlayType` to report `av01\|av1\|vp8` unsupported (`browser.py:3509`); its message says *"The player loaded but stayed black"*. Both builds decode AV1 correctly: here a solid-colour clip read back off a canvas as `rgb(48,160,253)` (software decode), and browser-linux on real GPU/Wayland/Mesa iris got **525 decoded / 0 dropped at 854×480 and 500 / 0 at 1080p from real youtube.com**, 25.0 fps against wall clock. So it fixes nothing, and the symptom is still live two days on. It is not inert: it forces VP9 over AV1, refuses VP8 too, and **overrides codec selection on every youtube.com load, which confounds every future diagnosis of this symptom** | Medium | **OPEN — upstream, shared; premise disproven from two directions** |
 | W-S06 | `perfVaapiHint` is one of **two** `t_` ids out of **745** in `settings.html` that reach no string key at all — not in `UI_STRINGS`, and not in the alias table at `settings.html:5591` that backs the other sixteen unbacked ids. So the sentence *"Leave it off if videos play as a black screen"* — the only place the browser tells the user what to do about black video — stays English in all 12 UI languages. `uiSizeName2` ("Chrome size") is the other; it has a `uiSizeName` key one alias entry away | Low | **OPEN — upstream, shared `settings.html`** |
 | W-S07 | `chromiumFlags` is a free-text box (`settings.html:3519`) read once at `browser.py:72` before Qt is imported, and a value in it can stop the browser from starting: `--use-gl=desktop` aborts this engine at init (measured, see the section). There is no recovery path in the product — `grep -ci 'safe_\?mode' browser.py` is **0**, no flag-reset, no env override — so the only way back is editing `config.json` by hand, which the user who typed the flag is the least likely to find | Low | **OPEN — upstream; the box that bricks it is the box you fix it from** |
 
@@ -1996,6 +1999,17 @@ audio play while it is black?" are both **unanswered** — not answered no.
 And there is no Windows machine or VM here, so anything about real
 Windows behaviour stays `UNVERIFIED — never executed`.
 
+**Answered since, by browser-linux, on the hardware I could not reach**
+— real GPU, Wayland, Mesa iris, the same Intel HD 630 KBL GT2, GL 4.6: a
+playing VP9 clip grabbed from the window gives a video rect at the exact
+source colour (432 against a magenta control strip at 510), and real
+`youtube.com` through real `browser.py` gives PICTURE with `YOUTUBE_JS`
+both shipped and neutered. **Video does composite on this hardware.** So
+this is not a GL or compositing failure, and the GL table below is a null
+rather than a lead. Both of our rigs are this one box's Intel HD 630,
+which leaves one question open that neither of us can close from here:
+whether the machine showing the bug is this hardware at all.
+
 ### The flag matrix, measured — one arm is not a diagnostic, it is fatal
 
 Qt 6.11.0 / PyQt6 6.11.0 / QtWebEngine 6.11.2 / Chromium 140.0.7339.225.
@@ -2057,7 +2071,11 @@ refusal with nothing to do with this bug.
 * **The AV1 mechanism did not reproduce.** `browser.py:3509` says some
   builds claim AV1 and then hand the player a black rectangle. This build
   does claim AV1 — and decodes it to the right colour. A **null**, and a
-  narrow one: software decode, one build, one box.
+  narrow one: software decode, one build, one box. **No longer narrow:**
+  browser-linux got 525 decoded / 0 dropped at 854×480 and 500 / 0 at
+  1080p from real `youtube.com` on real GPU. The same null from two
+  directions, and `browser.py:3509` is a shipped fix built on it being
+  false — W-B27.
 * **This engine has no proprietary codecs.** No H.264, no AAC, no HEVC,
   confirmed by a real clip and not only by the claim. YouTube serves
   VP9/AV1 so it survives, but any site that offers H.264 only cannot
@@ -2088,6 +2106,24 @@ So the first question is not which GL flag helps. It is **whether the
 VA-API toggle is on, and whether that machine has one GPU or two** — and
 the answer to that lives in a `config.json` on his machine, which is not
 this one and was not read.
+
+**That lead is now dead, and it was mine.** browser-linux read the
+config: there is no `vaapi` key in it, so it defaults `False` and was
+never on. No `chromiumFlags` either. The reading of the comment was
+right; the comment does not describe his machine. And the route I went
+looking for next — the curated `--enable-features=VaapiVideoDecoder,`
+`VaapiVideoEncoder` switch as a second way into the same state without
+the `vaapi` key — does not exist, because **nothing reads `safeFlags`
+back at all** (W-B25). Which clears all ten curated flags as suspects
+for good, so the hypothesis dying was worth more than it would have been
+had it lived.
+
+What that leaves ruled out for this symptom, across both editions:
+compositing (real GPU), AV1 decode (two builds), the ad scrub (neutered
+arm), the `vaapi` toggle (not set), the free-text flags box (not set),
+and all ten curated flags (inert). The suspect list is nearly empty and
+the bug is still live — which is the state worth reporting plainly rather
+than filling with the next plausible mechanism.
 
 ### Not established, and not to be claimed
 
