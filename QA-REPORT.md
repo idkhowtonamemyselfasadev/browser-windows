@@ -627,7 +627,7 @@ a forgiving fallback returning a plausible wrong value.
 | W-B31 | **This symptom already happened once, was already attributed to the card chooser, and the chooser was already switched off for it — and Settings can walk straight back into it with no warning.** `_migrate_gpu_choice` (`browser.py:498`) says so in its own docstring: *"It went out, and within the hour YouTube live streams on his machine were black and flickering while an ordinary video played. This server cannot reproduce that — it renders in software, where the variables the chooser sets change nothing, measured at 121 frames in four seconds with them and 121 without."* The migration forces `gpuCard="auto"`, `gpuAsk=False`, `gpuReset=1`, and preserves any pick as `gpuCardWas`. browser-linux read his config as `gpuCard="0000:02:00.0"`, `gpuReset=1`, **no `gpuCardWas`** — and the migration only omits `gpuCardWas` when the pick was absent or already `auto`, so **that card was selected after the migration ran**, through the Settings list, which offers it with no mention of the prior incident. `_gpu_quiet()` applies it at import (`browser.py:536`), which is W-B29's PRIME-offload path — **but it has not run yet.** browser-linux read the environment of the running process (pid 16209, started 16:27:27, the instance behind the 17:39 screenshot): `DRI_PRIME`, `__NV_PRIME_RENDER_OFFLOAD` and `__VK_LAYER_NV_optimus` are all **unset**, so the pick was written after that process started and is pending a restart. I wrote this as live; it is armed. Two further gaps: the migration is one-shot (`if config.get("gpuReset"): return`), so the safety net is permanently spent; and `gpuCardWas` is written but **never read anywhere**, so the one record of what he used to run is inert. Config facts are browser-linux's reading, not mine | High | **OPEN — upstream, shared; explains how the known-bad state came back** |
 | W-S06 | `perfVaapiHint` is one of **two** `t_` ids out of **745** in `settings.html` that reach no string key at all — not in `UI_STRINGS`, and not in the alias table at `settings.html:5591` that backs the other sixteen unbacked ids. So the sentence *"Leave it off if videos play as a black screen"* — which was the only place the browser said anything to the user about black video, and is now the *wrong* one of two (`ytAdSkipHint`, added 2026-11-04, names the real cause) — stays English in all 12 UI languages. `uiSizeName2` ("Chrome size") is the other; it has a `uiSizeName` key one alias entry away | Low | **OPEN — upstream, shared `settings.html`** |
 | W-S07 | `chromiumFlags` is a free-text box (`settings.html:3519`) read once at `browser.py:72` before Qt is imported, and a value in it can stop the browser from starting: `--use-gl=desktop` aborts this engine at init (measured, see the section). There is no recovery path in the product — `grep -ci 'safe_\?mode' browser.py` is **0**, no flag-reset, no env override — so the only way back is editing `config.json` by hand, which the user who typed the flag is the least likely to find | Low | **OPEN — upstream; the box that bricks it is the box you fix it from** |
-| W-B32 | **With the switch on, the same failure is still silent — and it is our own code that silences it.** `unwall()` inside `YOUTUBE_JS` (`browser.py:3605`) removes `ytd-enforcement-message-view-model` and its backdrop from the page. When YouTube has decided this browser is not playing its ads, that element **is** the player's replacement, so removing it leaves a black rectangle with no picture, no sound, no `MediaError` and nothing in the console — the state that took two days and four probes to attribute. `ytAdSkip` being off by default means he will not meet it by accident any more, but the switch's hint is the only warning: turn it on, watch three videos, and the browser deletes the one artefact that explains what happened to the player. A wall that is removed without a word is indistinguishable from a graphics fault, which is exactly what it was mistaken for | Medium | **OPEN — upstream, shared `browser.py`; linux's call, since the fix is in the same script** |
+| W-B32 | **With the switch on, the same failure is still silent — and it is our own code that silences it.** `unwall()` inside `YOUTUBE_JS` (`browser.py:3605`) removes `ytd-enforcement-message-view-model` and its backdrop from the page. When YouTube has decided this browser is not playing its ads, that element **is** the player's replacement, so removing it leaves a black rectangle with no picture, no sound, no `MediaError` and nothing in the console — the state that took two days and four probes to attribute. `ytAdSkip` being off by default means he will not meet it by accident any more, but the switch's hint is the only warning: turn it on, watch three videos, and the browser deletes the one artefact that explains what happened to the player. A wall that is removed without a word is indistinguishable from a graphics fault, which is exactly what it was mistaken for. **Fixed upstream the same day** (browser-linux `9306a97`, ported here): `unwall()` returns early when an enforcement element is present, so the wall and its backdrop stay and YouTube's own message — in his language, which no toast of ours would be — is what he sees. A dismissible nag over a player that still works still comes off; with the wall up nothing is touched at all, because half a cleaned-up page is worse than none | Medium | **fixed (ported); verified by mutation, see below** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -2221,12 +2221,35 @@ wrong sentence to write.
 | the profile build | the youtube script is **left out** when the switch is off, not gated inside itself — so there is nothing for YouTube to notice |
 | `ytAdSkip` | Settings switch, en + de, hint states the **cost** rather than the feature |
 | the codec gate | gone (W-B27), with the measurement in its place |
-| `test_youtubejs.py` | adopted from linux; 32 checks, the script's first test in its life |
+| `test_youtubejs.py` | adopted from linux; 40 checks, the script's first test in its life |
 
 One line is edition-local and says so: the AV1 comment points at
 `tools/blackvid_probe.py` where linux names its `VIDEO_WATCH_JS`
 sampler, which this edition does not have. Recorded as a substitution in
 `win_port.json` so the three-way merge stays clean.
+
+**W-B32 closed, and the test proved by mutation rather than by
+reading.** browser-linux fixed it in `9306a97` and sent a warning with
+it: a bare `ytd-enforcement-message-view-model` on the body **cannot
+tell the fix from its absence**, because with the guard removed there is
+no dialog for the old selector to catch, so the wall survives either way
+and the check passes while the bug is back. Ported their nested-case
+test rather than a weaker one, then removed the guard here and watched
+which checks noticed:
+
+| Check | Guard removed |
+|---|---|
+| the enforcement wall is left where YouTube put it | **still green** |
+| ...and so is the grey behind it | **still green** |
+| ...so there is always something on screen saying what happened | **still green** |
+| the wall inside its own dialog is left alone as well | **RED** |
+| a nag over a working player is taken off | still green (correctly) |
+| with the wall up, nothing at all is taken off the page | **RED** |
+
+Three of the six bare-element checks are blind to the defect they are
+written for. The two that discriminate are the nested one and the
+wall-beside-nag one, and the nested shape is the one YouTube ships.
+`browser.py` byte-identical to the port afterwards, by md5.
 
 **What this does to the rows filed against the graphics stack.** W-B28,
 W-B29, W-B30 and W-B31 are all still real code defects and all four are
@@ -2388,7 +2411,7 @@ red every time since before this session), and `tests/test_twostep` (the load
 flake from run 2 above: isolated 3/3 green). `tests/test_masterlock` and
 `tests/test_private` are **green** now, which is W-S03 behaving exactly as
 diagnosed — HEAD is an ancestor of `@{u}` again, so the update toast does not
-fire. `test_youtubejs` is new and green at 33 checks.
+fire. `test_youtubejs` is new and green at 40 checks.
 
 ## Untested / blocked, and why
 

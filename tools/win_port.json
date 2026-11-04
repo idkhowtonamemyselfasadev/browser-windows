@@ -1174,6 +1174,6 @@
     "had gone through it."
   ],
   "adopted_pending": {
-    "test_youtubejs.py": "browser-linux d7466a1 + 153808e, adopted 2026-11-04 with the ad-scrub default. YOUTUBE_JS had no test in its life -- it gates itself on the youtube.com hostname, so nothing from a test server could reach it -- and this edition changed the script and its default on the same day, so the suite had to come with it rather than after it. Not in copy_files because those commits are not in the port base yet: ~/browser's origin/main is at 28a6995 and has neither. Moves to copy_files the moment a port can see it. One line is edition-local and names itself: the profile-list check asks for google-mode where Linux asks for its video-watch sampler, which is not here."
+    "test_youtubejs.py": "browser-linux d7466a1 + 153808e + 9306a97, adopted 2026-11-04 with the ad-scrub default. YOUTUBE_JS had no test in its life -- it gates itself on the youtube.com hostname, so nothing from a test server could reach it -- and this edition changed the script and its default on the same day, so the suite had to come with it rather than after it. Not in copy_files because those commits are not in the port base yet: ~/browser's origin/main is at 28a6995 and has none of them. Moves to copy_files the moment a port can see it. One line is edition-local and names itself: the profile-list check asks for google-mode where Linux asks for its video-watch sampler, which is not here."
   }
 }

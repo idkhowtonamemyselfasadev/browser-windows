@@ -21,7 +21,13 @@ ported here by content.
   never seen on any machine this project can run, and measured false on
   two, this edition included. What the engine can play is the engine's
   answer to give.
-- **`test_youtubejs.py`**, adopted from linux: 32 checks, and the first
+- **The enforcement wall is left on the screen.** It is not an overlay
+  over a working player — it *is* what replaced the player, so deleting
+  it only removed YouTube's own explanation and left the black
+  rectangle. It stays, and its message says what happened in his own
+  language. A dismissible nag over a player that still works comes off
+  as before; with the wall up, nothing is touched at all.
+- **`test_youtubejs.py`**, adopted from linux: 40 checks, and the first
   test `YOUTUBE_JS` has ever had. It gates itself on the youtube.com
   hostname, so nothing served from a test server could reach it; the
   suite shadows `location` instead of pretending to be YouTube on the
