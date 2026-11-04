@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-11-04 — YouTube plays again: the ad scrub is off by default
+
+The black YouTube player reported on 2026-11-03 was never a decode,
+driver or compositing fault. Stripping the ads out of YouTube's player
+data means no ad plays, YouTube notices, counts the videos, and replaces
+the player with its "allow ads" wall — which this browser's own
+`unwall()` then deletes, leaving a black rectangle with no picture, no
+sound and nothing in the console. Found by browser-linux (`153808e`);
+ported here by content.
+
+- **`ytAdSkip` is off unless he asks for it**, and when it is off the
+  youtube script is left out of the profile entirely rather than gated
+  inside itself, so there is nothing for YouTube to notice. Settings
+  carries the switch in English and German, and its hint says what it
+  **costs** — a switch whose price is "the site stops working" has to
+  say so on the switch. Takes hold at the next start.
+- **The AV1/VP8 codec gate is gone.** It hid both from YouTube on the
+  premise that some QtWebEngine builds claim AV1 and cannot decode it —
+  never seen on any machine this project can run, and measured false on
+  two, this edition included. What the engine can play is the engine's
+  answer to give.
+- **`test_youtubejs.py`**, adopted from linux: 32 checks, and the first
+  test `YOUTUBE_JS` has ever had. It gates itself on the youtube.com
+  hostname, so nothing served from a test server could reach it; the
+  suite shadows `location` instead of pretending to be YouTube on the
+  network.
+
 ## 2026-10-22 — caught up with the Linux edition
 
 This edition was generated from a `browser.py` of 20,563 lines. The one

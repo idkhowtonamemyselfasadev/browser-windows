@@ -617,16 +617,17 @@ a forgiving fallback returning a plausible wrong value.
 | W-B23 | `TaskBar._show_time` (`browser.py:20930`) is the native twin of the `start.html` clock bug. A 20-second repeating `QTimer` constructs a **fresh `QLocale()` every tick**, formats `QTime.currentTime()` to `ShortFormat` — which is `HH:MM` and changes once a **minute** — then calls `setText`, `adjustSize()` and a full `_relayout()` unconditionally. **Two of every three ticks set a string identical to the one on screen** and relayout the bar for it. Timer lifecycle is correct (`showEvent`/`hideEvent`), so it only runs while the taskbar look is on. **Rate NOT measured — do not quote one** | Low | **OPEN — upstream** |
 | W-S05 | `win_port.json` names `linux_repo: ~/browser`, the pre-rewrite clone whose local `main` shares **no** history with the live repo (`merge-base` is empty). Same mis-pointing browser-mac found in `mac_port.json`. **But the base is sound here**: `UPSTREAM` is `origin/main`, a porter reads a ref not a working tree, and `ported_from 055eb676c` **is** an ancestor of that clone's `origin/main` — where mac's `28a6995` is not. Correct output by a fragile route; one stale fetch there and a port silently reads an older upstream | Low | **OPEN — parked on the fleet repoint** |
 | W-B21 | While `start.html` (the page the browser opens on) is the visible tab, one QtWebEngine child process (**the renderer** — this report first called it the compositor off a thread name; see the section) grows at **4.4 MB/min of PSS** and releases none of it on navigate. Measured for 70 minutes: first third +4.40, last third +4.43, no bend, 97 → 405 MB, and `MemAvailable` falls with it — **withdrawn as corroboration**: browser-linux is a tmux session on this same box, so that figure is not attributable to one process. **The cause is not localised**, but it IS page-driven: `start.html:2792` is an unconditional `setInterval(tick, 1000)`, which the rAF/setTimeout probe could not see by construction. 59 of 60 of its `textContent` writes are identical to what is already rendered | High | **OPEN — cause unlocalised; Linux only, Windows `UNVERIFIED`** |
-| W-B24 | **The hardware-video-decode switch ships on this edition and cannot work here.** `settings.html:1537` offers "Hardware video decoding (VA-API)" with no platform gate, and every flag behind it is Linux-only: `VaapiVideoDecoder`, `VaapiVideoDecodeLinuxGL`, `AcceleratedVideoDecodeLinuxGL`, `VaapiOnNvidiaGPUs`, chosen off `/proc/driver/nvidia/version` (`browser.py:64934-64947`), a path that does not exist on Windows. Windows decodes through D3D11/MediaFoundation and ships hardware decode **on**, so the equivalent control there is a *disable*, which this edition does not have. **Its own hint names it as the fix for black video** — so a user hitting exactly the bug under investigation is pointed at a switch that on this platform can be neither on nor off. Precedent in the same dict 1,180 lines above: `gpuChoose`/`gpuWindowsPage` (`browser.py:14351`), whose comment describes this same defect being found and split once | Medium | **OPEN — upstream; needs a capability key, one of ten `*Missing` strings already does this** |
+| W-B24 | **The hardware-video-decode switch ships on this edition and cannot work here.** `settings.html:1537` offers "Hardware video decoding (VA-API)" with no platform gate, and every flag behind it is Linux-only: `VaapiVideoDecoder`, `VaapiVideoDecodeLinuxGL`, `AcceleratedVideoDecodeLinuxGL`, `VaapiOnNvidiaGPUs`, chosen off `/proc/driver/nvidia/version` (`browser.py:64934-64947`), a path that does not exist on Windows. Windows decodes through D3D11/MediaFoundation and ships hardware decode **on**, so the equivalent control there is a *disable*, which this edition does not have. **Its own hint names it as the fix for black video** — so a user hitting exactly the bug under investigation is pointed at a switch that on this platform can be neither on nor off. **And the attribution is wrong on any platform**: the 2026-11-03 black player was YouTube's enforcement wall, not a decode path (see *Resolved*), so the hint sends a user to a dead switch for a fault it was never about. Precedent in the same dict 1,180 lines above: `gpuChoose`/`gpuWindowsPage` (`browser.py:14351`), whose comment describes this same defect being found and split once | Medium | **OPEN — upstream; needs a capability key, one of ten `*Missing` strings already does this** |
 | W-B25 | **The whole "Chromium flags worth having" panel is inert.** `SAFE_FLAGS` (`browser.py:50416`) offers ten switches; `set_safe_flag` writes them to `config["safeFlags"]` and `browser.py:14758` flashes *"needs a restart"*. Nothing ever reads them back into the engine: `_startup_flags()` (`browser.py:63`) reads only `chromiumFlags`, `hostOverrides` and `debugPort`, and each of the eight flag literals unique to this list appears **exactly once in the file — in the list itself**. Measured through the real startup path with three of them set in a config: `--enable-zero-copy` and `--enable-gpu-rasterization` are both absent from the final `QTWEBENGINE_CHROMIUM_FLAGS`. Ten switches, a restart prompt, no effect. **Also clears all ten as suspects in the black-video hunt** — including the curated `--enable-features=VaapiVideoDecoder,VaapiVideoEncoder`, which is not a second route to the VA-API state after all | Medium | **OPEN — upstream, shared `browser.py`** |
 | W-B26 | **The flags box silently drops the one flag form a user is most likely to be told to try.** `_startup_flags()` appends the free-text box's value at import time (`browser.py:99`); `_install_proxy_flags` appends its own `--enable-features=PlatformHEVCDecoderSupport` later (`browser.py:64944`). Two `--enable-features` on one command line, the engine's last. Measured: `--enable-features=ProbeFeatureFromTheTextBox` typed into the box does not survive. **The rule being broken is stated in the comment five lines above the offending append** (`browser.py:64918`): *"Chromium honours only the LAST `--enable-features` on the command line, so everything asked for has to travel in this one flag."* The code obeys it for its own features and not for his. **`--disable-features` collides the same way**, found by browser-linux and reproduced here: the box's value goes in at `browser.py:99`, the module level appends `--disable-features=WebRtcAllowInputVolumeAdjustment` at `113`, and only the engine's survives. So both halves of the one flag pair a user would be handed are silently dropped. Fix is one `re.sub` per form to harvest any earlier value, the same way the proxy and widevine flags are already stripped and re-added in that function | Medium | **OPEN — upstream; blocks flag-based diagnosis of W-B24's symptom** |
-| W-B27 | **A fix shipped 2026-11-01 for the black YouTube player rests on a premise both editions have now disproven.** `ae9d74d` ("YouTube: force VP9 by hiding AV1, which this engine cannot really decode") overrides `MediaSource.isTypeSupported` and `canPlayType` to report `av01\|av1\|vp8` unsupported (`browser.py:3509`); its message says *"The player loaded but stayed black"*. Both builds decode AV1 correctly: here a solid-colour clip read back off a canvas as `rgb(48,160,253)` (software decode), and browser-linux on real GPU/Wayland/Mesa iris got **525 decoded / 0 dropped at 854×480 and 500 / 0 at 1080p from real youtube.com**, 25.0 fps against wall clock. So it fixes nothing, and the symptom is still live two days on. It is not inert: it forces VP9 over AV1, refuses VP8 too, and **overrides codec selection on every youtube.com load, which confounds every future diagnosis of this symptom** | Medium | **OPEN — upstream, shared; premise disproven from two directions** |
+| W-B27 | **A fix shipped 2026-11-01 for the black YouTube player rests on a premise both editions have now disproven.** `ae9d74d` ("YouTube: force VP9 by hiding AV1, which this engine cannot really decode") overrides `MediaSource.isTypeSupported` and `canPlayType` to report `av01\|av1\|vp8` unsupported (`browser.py:3509`); its message says *"The player loaded but stayed black"*. Both builds decode AV1 correctly: here a solid-colour clip read back off a canvas as `rgb(48,160,253)` (software decode), and browser-linux on real GPU/Wayland/Mesa iris got **525 decoded / 0 dropped at 854×480 and 500 / 0 at 1080p from real youtube.com**, 25.0 fps against wall clock. So it fixes nothing, and the symptom is still live two days on. It is not inert: it forces VP9 over AV1, refuses VP8 too, and **overrides codec selection on every youtube.com load, which confounds every future diagnosis of this symptom**. Removed 2026-11-04, ported from browser-linux `d7466a1`: nothing in `YOUTUBE_JS` touches `MediaSource` or `canPlayType` any more, and the comment in its place records the measurement so the next session does not re-add it | Medium | **fixed (ported); premise disproven from two directions** |
 | W-B28 | `gpu_env`'s `choice in ("", "auto")` branch early-returns at `browser.py:415`, six lines before `LIBVA_DRIVER_NAME` joins the `off` list at `421`, so the default keeps the import-time `nvidia` (`browser.py:123`) while clearing `DRI_PRIME` and the three `__NV_*` variables. **LATENT, not his cause, and the prediction I attached to it was wrong twice over.** His `gpuCard` is `"0000:02:00.0"` — the RTX 5080, explicitly set — so he is not in the inconsistent row at all, and he is black on the *consistent* one. Worse, I called the variables `gpu_env` sets "drawing" and reasoned about the compositor: they set the **browser process's GL device**, while Hyprland composites on whichever card owns the displays, which on his box is the NVIDIA card (`boot_vga=1`, 3 connected outputs; the Intel iGPU has 0). So my "either explicit card fixes it" prediction would have steered him onto the iGPU — browser rendering and decoding on Intel while NVIDIA composites, which is `browser.py:238` verbatim. browser-linux caught it before it reached him. **Sixth instance of this report's house failure mode**: read one attribute, conclude about a different property. The table scored decoder-vs-GL-device agreement and had no column for which card owns the displays — a hardware fact a pure function cannot know, and my probe modelled the function and I read it as hardware **Refiled again on browser-linux's process read:** the `auto`-branch framing is still the defect I described, but the pair it leaves set — `LIBVA_DRIVER_NAME=nvidia` and `NVD_BACKEND=direct` at `browser.py:123-125`, unconditional on an NVIDIA driver existing and independent of the `vaapi` toggle — is **the only GPU state `browser.py` itself put on the process that is showing him the black video**. `__GLX_VENDOR_LIBRARY_NAME=nvidia` is also set there but cannot be ours: `gpu_env` only ever sets it alongside the other two offload variables, which are absent, so it comes from his session. So this is the leading candidate rather than latent — the thing I flagged and declined to assert. **Mechanism still unestablished**: pointing libva at the nvidia driver on a box where NVIDIA does own the displays is not the cross-card story of `browser.py:238`, and both calls are `setdefault`, so the env alone cannot say whether we set them or inherited them. browser-linux's test — one launch with both names present-but-empty — is routed to server-71; his machine, his profile, and neither of us is launching a browser on it. **The two-arm test moves two variables at once**, which is the confound I flagged for the profile/environment pair and then missed inside the arm itself: emptying `LIBVA_DRIVER_NAME` *and* `NVD_BACKEND` together cannot say which line is responsible. They have different consequences — dropping the driver name removes hardware decode from machines where it works, which is the outcome `_migrate_gpu_choice` was written to avoid, while the backend is only `direct` because *"the direct backend does not want a running X server"* (`browser.py:119`), a choice made **for** the Wayland case his box is. A third arm settles it in one launch: `NVD_BACKEND=egl` with `LIBVA_DRIVER_NAME` left alone. Named as `egl` rather than empty on purpose — an empty value leaves it to libva's handling of a present-but-blank variable, which is an assumption the other arms are also quietly making | High | **OPEN — leading candidate, upstream; test is server-71's to route** |
 | W-B29 | **`gpu_env` emits a render-offload configuration for any NVIDIA card without ever asking whether that card owns the displays.** `browser.py:431-434` branches on `card["vendor"] == "0x10de"` alone and sets `__NV_PRIME_RENDER_OFFLOAD=1`, `__GLX_VENDOR_LIBRARY_NAME=nvidia`, `__VK_LAYER_NV_optimus=NVIDIA_only` plus `DRI_PRIME`. PRIME render-offload means *"render here, the display is on the other card"* — true on a laptop hybrid, false on his desktop where the NVIDIA card drives all three monitors. He is black on exactly this setting. **The fact needed to avoid it is already collected and never read**: `gpu_cards()` reads `boot_vga` into `card["boot"]` (`browser.py:352`) and `gpu_env` never consults it. Measured on his topology through the real functions: choosing the NVIDIA card emits all three offload variables, `boot_vga=True` notwithstanding. `boot_vga` is the firmware console card rather than "has outputs" — they coincide here but the robust predicate is connected outputs, which `gpu_cards()` discards by design (`"card1-DP-1 is an output, not a card"`), so the fix is two steps: count outputs per card, then gate the trio on it. Hypothesis and fix location are browser-linux's; this row is the code evidence for it | High | **OPEN — upstream, shared; linux owns the fix** |
 | W-B30 | **The card chooser offers the iGPU first on a desktop, and its own comment says it does the opposite.** `cards.sort(key=lambda c: (c["boot"], c["slot"]))` with *"the discrete card first: it is the one he is looking for"* (`browser.py:357`). That holds on a laptop hybrid, where the iGPU is `boot_vga`. On his desktop the **discrete card is `boot_vga=1`**, so the sort inverts: measured on his topology, `gpu_cards()` returns Intel iGPU first, NVIDIA second. **Which surface this is on, corrected:** the startup ask window never opens for him — `gpuAsk` is `False` and `_gpu_startup` returns early on `not ask` (`browser.py:562`) — so the list he actually sees is the Settings one, built from the same `gpu_cards()` order at `settings.html:4141` with *"Let the system decide"* pushed on last (`4145`). Top entry Intel, auto at the bottom. So the first card offered is still the one browser-linux is steering him away from, and the safe choice is the last row rather than a missing one — on this hardware, selecting it puts decode and render on Intel while NVIDIA composites. Same one-card assumption as W-B29, one line apart, and this one is user-visible. **And there is a pending pick behind it:** his `gpuCard="0000:02:00.0"` was written after the running browser started and has never been applied, so *restarting* is what arms it. The order of operations is therefore load-bearing — select *"Let the system decide"* **first**, restart **second**. A bare restart, including one done to test any other advice, activates the untested pick and emits the offload trio (W-B29) for the first time. Nothing in the UI distinguishes a saved setting from an applied one; the hint says *"Applies when the browser is started again"*, which is true and is not the same as telling him something is already waiting | Medium | **OPEN — upstream, shared** |
 | W-B31 | **This symptom already happened once, was already attributed to the card chooser, and the chooser was already switched off for it — and Settings can walk straight back into it with no warning.** `_migrate_gpu_choice` (`browser.py:498`) says so in its own docstring: *"It went out, and within the hour YouTube live streams on his machine were black and flickering while an ordinary video played. This server cannot reproduce that — it renders in software, where the variables the chooser sets change nothing, measured at 121 frames in four seconds with them and 121 without."* The migration forces `gpuCard="auto"`, `gpuAsk=False`, `gpuReset=1`, and preserves any pick as `gpuCardWas`. browser-linux read his config as `gpuCard="0000:02:00.0"`, `gpuReset=1`, **no `gpuCardWas`** — and the migration only omits `gpuCardWas` when the pick was absent or already `auto`, so **that card was selected after the migration ran**, through the Settings list, which offers it with no mention of the prior incident. `_gpu_quiet()` applies it at import (`browser.py:536`), which is W-B29's PRIME-offload path — **but it has not run yet.** browser-linux read the environment of the running process (pid 16209, started 16:27:27, the instance behind the 17:39 screenshot): `DRI_PRIME`, `__NV_PRIME_RENDER_OFFLOAD` and `__VK_LAYER_NV_optimus` are all **unset**, so the pick was written after that process started and is pending a restart. I wrote this as live; it is armed. Two further gaps: the migration is one-shot (`if config.get("gpuReset"): return`), so the safety net is permanently spent; and `gpuCardWas` is written but **never read anywhere**, so the one record of what he used to run is inert. Config facts are browser-linux's reading, not mine | High | **OPEN — upstream, shared; explains how the known-bad state came back** |
-| W-S06 | `perfVaapiHint` is one of **two** `t_` ids out of **745** in `settings.html` that reach no string key at all — not in `UI_STRINGS`, and not in the alias table at `settings.html:5591` that backs the other sixteen unbacked ids. So the sentence *"Leave it off if videos play as a black screen"* — the only place the browser tells the user what to do about black video — stays English in all 12 UI languages. `uiSizeName2` ("Chrome size") is the other; it has a `uiSizeName` key one alias entry away | Low | **OPEN — upstream, shared `settings.html`** |
+| W-S06 | `perfVaapiHint` is one of **two** `t_` ids out of **745** in `settings.html` that reach no string key at all — not in `UI_STRINGS`, and not in the alias table at `settings.html:5591` that backs the other sixteen unbacked ids. So the sentence *"Leave it off if videos play as a black screen"* — which was the only place the browser said anything to the user about black video, and is now the *wrong* one of two (`ytAdSkipHint`, added 2026-11-04, names the real cause) — stays English in all 12 UI languages. `uiSizeName2` ("Chrome size") is the other; it has a `uiSizeName` key one alias entry away | Low | **OPEN — upstream, shared `settings.html`** |
 | W-S07 | `chromiumFlags` is a free-text box (`settings.html:3519`) read once at `browser.py:72` before Qt is imported, and a value in it can stop the browser from starting: `--use-gl=desktop` aborts this engine at init (measured, see the section). There is no recovery path in the product — `grep -ci 'safe_\?mode' browser.py` is **0**, no flag-reset, no env override — so the only way back is editing `config.json` by hand, which the user who typed the flag is the least likely to find | Low | **OPEN — upstream; the box that bricks it is the box you fix it from** |
+| W-B32 | **With the switch on, the same failure is still silent — and it is our own code that silences it.** `unwall()` inside `YOUTUBE_JS` (`browser.py:3605`) removes `ytd-enforcement-message-view-model` and its backdrop from the page. When YouTube has decided this browser is not playing its ads, that element **is** the player's replacement, so removing it leaves a black rectangle with no picture, no sound, no `MediaError` and nothing in the console — the state that took two days and four probes to attribute. `ytAdSkip` being off by default means he will not meet it by accident any more, but the switch's hint is the only warning: turn it on, watch three videos, and the browser deletes the one artefact that explains what happened to the player. A wall that is removed without a word is indistinguishable from a graphics fault, which is exactly what it was mistaken for | Medium | **OPEN — upstream, shared `browser.py`; linux's call, since the fix is in the same script** |
 
 **W-B08 detail**, and the fix. The docstring's whole distinction is that
 `create=True` conjures the folder up; the code honoured that only for a folder he
@@ -2123,7 +2124,11 @@ refusal with nothing to do with this bug.
   play — worth knowing before a black frame is blamed on compositing.
 * `YOUTUBE_JS` is inserted **unconditionally** (`browser.py:47311`, not
   inside any `if`), so its AV1 refusal does not ride on the ad-block
-  toggle. A second **null**, and the one worth having.
+  toggle. A second **null**, and the one worth having. **It was not a
+  null. It was the mechanism** — the same unconditional insert put the
+  *ad scrub* on every profile too, and that is what YouTube answered with
+  the wall. I measured the right line and read only the half of it that
+  was about codecs. See *Resolved* below.
 
 ### The file already names three causes of a black player
 
@@ -2160,11 +2165,83 @@ for good, so the hypothesis dying was worth more than it would have been
 had it lived.
 
 What that leaves ruled out for this symptom, across both editions:
-compositing (real GPU), AV1 decode (two builds), the ad scrub (neutered
-arm), the `vaapi` toggle (not set), the free-text flags box (not set),
+compositing (real GPU), AV1 decode (two builds), ~~the ad scrub (neutered
+arm)~~, the `vaapi` toggle (not set), the free-text flags box (not set),
 and all ten curated flags (inert). The suspect list is nearly empty and
 the bug is still live — which is the state worth reporting plainly rather
 than filling with the next plausible mechanism.
+
+**The struck entry is the one that was the cause.** The neutered arm did
+run and it did show picture, but it could not have shown anything else:
+YouTube's wall arrives after it has *counted* three ad-free videos, so a
+single clip load on a fresh profile never reaches the state the arm was
+meant to rule out. An arm that cannot produce the symptom does not
+acquit the suspect — and "ruled out" is the wrong word for it, which is
+the same error as reading a flag's presence in `strings` as the engine
+accepting it. See *Resolved* below.
+
+### Resolved: YouTube answered our ad scrub, and our own code hid the answer
+
+browser-linux found it (`153808e`, 2026-11-04) and it is not in the
+graphics stack at all.
+
+**The chain.** `YOUTUBE_JS` deletes `adPlacements`, `playerAds`,
+`adSlots` and `adBreakHeartbeatParams` out of YouTube's player data in
+the page. No ad plays — and YouTube notices that no ad played. It counts
+the videos (the report quotes *"after 3 videos you cannot watch YouTube
+any more"*) and then **replaces the player** with its enforcement element,
+`ytd-enforcement-message-view-model`. `unwall()`, fifty-five lines
+further down the same script (`browser.py:3550` and `3605`), removes
+that element from the page. What is left
+where the video was is a black rectangle with no picture, no sound, no
+`MediaError` and nothing in the console.
+
+**Why every instrument here was silent.** There was nothing to measure.
+No decode was attempted, so a frame record has nothing to report; no
+element failed, so there is no media error; and the one artefact that
+named the cause was deleted by our own script before anything could read
+it. A compositing fault and a deleted player look identical from every
+probe either of us built, because the difference between them is an
+element that is no longer in the DOM.
+
+**Why the local arms could not have caught it.** My clips were solid
+colours served from `127.0.0.1`; linux's neutered-`YOUTUBE_JS` arm loaded
+real `youtube.com` once on a fresh profile. The wall arrives *after
+YouTube has counted three ad-free videos* — a state no single load on a
+fresh profile reaches. Both arms were honest and both were incapable of
+producing the symptom, which is why "the ad scrub is ruled out" was the
+wrong sentence to write.
+
+**What landed in this edition**, ported by content from `d7466a1` +
+`153808e`, shared regions kept byte-identical:
+
+| | |
+|---|---|
+| `_ad_skip_wanted(config)` | the default, with the reason in its docstring |
+| the profile build | the youtube script is **left out** when the switch is off, not gated inside itself — so there is nothing for YouTube to notice |
+| `ytAdSkip` | Settings switch, en + de, hint states the **cost** rather than the feature |
+| the codec gate | gone (W-B27), with the measurement in its place |
+| `test_youtubejs.py` | adopted from linux; 32 checks, the script's first test in its life |
+
+One line is edition-local and says so: the AV1 comment points at
+`tools/blackvid_probe.py` where linux names its `VIDEO_WATCH_JS`
+sampler, which this edition does not have. Recorded as a substitution in
+`win_port.json` so the three-way merge stays clean.
+
+**What this does to the rows filed against the graphics stack.** W-B28,
+W-B29, W-B30 and W-B31 are all still real code defects and all four are
+still worth fixing — and **none of them was this bug**. W-B28 spent part
+of a day as "leading candidate" on my say-so. The defects were found by
+reading code around a symptom that turned out to be unrelated to any of
+them, which is worth saying plainly: a bug hunt that produces real
+findings and misses the cause is not a successful hunt with a bonus.
+
+**The shape to remember.** The symptom was "black rectangle, rest of the
+page paints fine", and that phrase has a classic home — QtWebEngine
+video compositing. Two editions went there and stayed there for two
+days. The question neither of us asked for a day and a half was not
+*what fails to draw a player* but **what removes one** — and the browser
+had its own answer to that, in the same script, fifty-five lines apart.
 
 ### Not established, and not to be claimed
 
@@ -2303,6 +2380,15 @@ formally unproven; left alone.
 
 `tests/` is flaky under load and any single "N red" from a full run reads worse
 than it is. Every red was isolated rather than quoted.
+
+**The run after the YouTube ad-scrub port, 2026-11-04: 4 red, all four already
+placed above** — `test_offpalette` and `tests/test_masterwizard` (deterministic,
+red on linux's own tree too), `test_screenshare` (no screen under `offscreen`,
+red every time since before this session), and `tests/test_twostep` (the load
+flake from run 2 above: isolated 3/3 green). `tests/test_masterlock` and
+`tests/test_private` are **green** now, which is W-S03 behaving exactly as
+diagnosed — HEAD is an ancestor of `@{u}` again, so the update toast does not
+fire. `test_youtubejs` is new and green at 33 checks.
 
 ## Untested / blocked, and why
 
